@@ -6,13 +6,6 @@ import scipy.integrate as integrate
 from scipy.integrate import solve_ivp
 from scipy.interpolate import CubicSpline, UnivariateSpline
 
-#use rk4 to solve motion ODE
-x_dot, y_dot, v, theta, omega = 0, 0, 0, 0, 0
-
-x_dot = v*np.cos(theta)
-y_dot = v* np.sin(theta)
-
-
 
 
 def generate_spline(points, spline_type="cubic"):
@@ -141,6 +134,8 @@ def plot_xy_trajectory(xs, ys, ax=None, label="Trajectory", linestyle='-'):
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.set_aspect("equal", adjustable="box")
+    ax.set_xlim(-10, 10)
+    ax.set_ylim(-10, 10)
     ax.grid(True)
 
     return ax
@@ -162,35 +157,68 @@ def make_fun(v_fn, omega_fn):
 # omega_fn = lambda t, y: 0.1*t
 
 # fun = make_fun(v_fn, omega_fn)
+class solver:
+    def __init__(self, m = 1, r=0.01, dt = 0.01, state0 = None):  #change so you can pass in init pos and init vel
+        #state0: [x_0, y_0, theta_0, vel_0, theta_dot_0]
 
-def solver(xs, ys, thetas, v, w, dt): #3 states, 2 control inputs, time step
-    x_new = v*np.cos(thetas[-1])*dt + xs[-1]
-    y_new = v*np.sin(thetas[-1])*dt + ys[-1]
-    theta_new = w*dt + thetas[-1]
-    xs.append(x_new)
-    ys.append(y_new)
-    thetas.append(theta_new)
-    return xs, ys, thetas
+        if state0 is None:  
+            state0 = [0.0, 0.0, 0.0, 0.0, 0.0]        
+        
+        self.m = m
+        self.r = r
+        self.dt = dt
+        self.xs, self.ys, self.thetas = [[v] for v in state0[:3]]
+        self.v_dots, self.theta_dots = [[v] for v in state0[3:]]
+
+        #gives second position values for second derivative solver by using velocity
+        self.xs.insert(0, (self.xs[0]-self.v_dots[0]*np.cos(self.thetas[-1])*self.dt))
+        self.ys.insert(0, (self.ys[0]-self.v_dots[0]*np.sin(self.thetas[-1])*self.dt))
+        self.thetas.insert(0, (self.thetas[0]-self.theta_dots[0]*self.dt))
+
+        # print(self.xs, self.ys, self.thetas)
+
+
+
+    def solve(self, f, alpha): #advances state by time value, returns states
+        #position solves
+        self.xs.append((f/self.m * np.cos(self.thetas[-1]) * self.dt*2) + 2*self.xs[-1]-self.xs[-2] )
+        self.ys.append((f/self.m * np.sin(self.thetas[-1]) * self.dt*2) + 2*self.ys[-1]-self.ys[-2] )
+        self.thetas.append((1/2 * self.m * self.r**2 * alpha * self.dt**2 ) + 2*self.thetas[-1] - self.thetas[-2])
+
+        # #vel solves
+        # self.x_dots.append(f/self.m * np.cos(self.thetas[-1])*self.dt + self.x_dots[-1])
+        # self.x_dots.append(f/self.m * np.sin(self.thetas[-1])*self.dt + self.y_dots[-1])
+        # self.theta_dots.append(1/2*self.m*self.r**2* alpha *self.dt + self.theta_dots[-1])
+
+        return self.xs, self.ys, self.thetas#, self.x_dots, self.y_dots, self.theta_dots
 
 t_0 = 0
 t_f = 30
-dt = 0.01
 t = 0
-xs, ys, thetas = [0],[0],[1.5]
-v_fn     = lambda t: 1.0# + 0.01*t
-omega_fn = lambda t: -1*np.sin(t)+0.01*t
+m = 1
+r = 0.01
+dt = 0.01
+xs = []
+ys = []
+f_fn     = lambda t: 1.0# + 0.01*t
+alpha_fn = lambda t: -1*np.sin(t)+0.01*t 
 
-while t<30:
-    v = v_fn(t)
-    w = omega_fn(t)
-    solver(xs, ys, thetas, v, w, dt)
+state0 = [0, 0, 0.6, 1, 0.3]  #should give in xytheta positions and 
+
+solver = solver(m, r, dt, state0)
+
+while t<10:
+    f = f_fn(t)
+    alpha = alpha_fn(t)
+    # results = solver.solve(f, alpha)
+    results = solver.solve(0, 0)
+
+    xs = results[0]
+    ys = results[1]
     t += dt
 
-
-# t_eval = np.arange(t_0, t_f + dt, dt)
-# init_state = np.array([0, 0, 0])
-
-# plot_xy_trajectory(xs, ys)
+for i, (x, y) in enumerate(zip(xs, ys)):
+    print(f"{i:4d}: x = {x:.3f}, y = {y:.3f}")
 
 
 # Example usage: for making splines
