@@ -235,11 +235,15 @@ class solver:
         self.m = m
         self.r = r
         self.dt = dt
-        self.xs, self.ys, self.thetas = [[v] for v in state0[:3]]
-        self.v_dots, self.theta_dots = [[v] for v in state0[3:]]
+        # Initialize as flat lists (not nested lists)
+        # self.xs, self.ys, self.thetas = [[v] for v in state0[:3]]
+        self.xs, self.ys, self.thetas = [state0[0]], [state0[1]], [state0[2]]
+        # self.v_dots, self.theta_dots = [[v] for v in state0[3:]]
+        self.v_dots, self.theta_dots = [state0[3]], [state0[4]]
+
         # Initialize x_dots and y_dots as lists (not numpy arrays) so we can append later
-        self.x_dots = [self.v_dots[0] * np.cos(self.thetas[0])]
-        self.y_dots = [self.v_dots[0] * np.sin(self.thetas[0])]
+        self.x_dots = [float(self.v_dots[0] * np.cos(self.thetas[0]))]
+        self.y_dots = [float(self.v_dots[0] * np.sin(self.thetas[0]))]
 
 
         #gives second position values for second derivative solver by using velocity
@@ -267,10 +271,16 @@ class solver:
         self.x_dots.append(f/self.m * np.cos(self.thetas[-1])*self.dt + self.x_dots[-1])
         self.y_dots.append(f/self.m * np.sin(self.thetas[-1])*self.dt + self.y_dots[-1])
         self.theta_dots.append(2 / self.m / self.r**2* torque *self.dt + self.theta_dots[-1])
+        
+        # Combine all lists into columns: [xs, ys, thetas, x_dots, y_dots, theta_dots]
+        # Convert each list to numpy array of floats, handling numpy scalars and arrays
+        arrays = [np.asarray(lst, dtype=float).flatten() for lst in 
+                  [self.xs, self.ys, self.thetas, self.x_dots, self.y_dots, self.theta_dots]]
+        self.state_history = np.column_stack(arrays)
 
-        # print(len(self.xs), len(self.ys), len(self.x_dots), len(self.theta_dots))
 
-        return self.xs, self.ys, self.thetas, self.x_dots, self.y_dots, self.theta_dots
+        return self.state_history
+        # return self.xs, self.ys, self.thetas, self.x_dots, self.y_dots, self.theta_dots
 
 class controller:
     def __init__(self,traj, kd_lin= 0, kp_lin = 0, kd_ang= 0, kp_ang = 0, dt = 0.01):
@@ -301,7 +311,7 @@ def trim_history(results_tuple):
         return np.array([float(x) for x in lst[:min_len]], dtype=float)
     return tuple(to_array(h) for h in results_tuple)
 
-'''MAINC ODE BEGINS HERE'''        
+'''MAIN CODE BEGINS HERE'''        
 #initialize starting variables
 t_0, t_f, t, dt = 0, 10, 0, 0.01
 m, r = 1, 0.01
@@ -309,6 +319,7 @@ xs, ys, thetas = [], [], []
 control_points = [(0, 0), (2, 4), (8, 7), (10, 10)]
 x_max, y_max = 10.0, 10.0 #graph x and y axis max
 v_traj = 1
+results = []
 #placeholder force and torque functions
 f_fn     = lambda t: -1.0*np.sin(2*t)
 alpha_fn = lambda t: -1*np.sin(t)+0.01*t 
@@ -327,28 +338,16 @@ controller  = controller(traj, kd_lin= 0.1, kp_lin = 1, kd_ang= 0.1, kp_ang = 0.
 while t<t_f:
     # f = f_fn(t)
     # torque = alpha_fn(t)
-    xs,  ys,  thetas,  x_dots,  y_dots,  theta_dots = solver.solve(f,0, torque)    #force, force_angle, torque
-    # results = solver.solve(0.01, 0, 0)   #force, force_angle, torque
-    lengths = [len(xs), len(ys), len(thetas), len(x_dots), len(y_dots), len(theta_dots)]
-    print(len(lengths))
-
-    if len(set(lengths)) != 1:
-        raise ValueError(f"History lengths do not match: {lengths}")
-    else:
-        print("lengths match")
-    # Trim results to same length before stacking
-    results = np.vstack((xs, ys, thetas, x_dots, y_dots, theta_dots)).T
-    print_results(results)
+    results = solver.solve(f,0, torque)    #force, force_angle, torque
+ 
 
 
-    # results_trimmed = trim_history(results)
-    # history = np.column_stack(results_trimmed)
 
-
-    xs = results[0]
-    ys = results[1]
-
-    f, torque = controller.PD_control(traj, results[-1])
+    xs = results[-1, 0]
+    ys = results[-1, 1]
+    print(results)
+    print(results[-1])
+    f, torque = controller.PD_control(traj, results[-1, :])
     # xs,  ys,  thetas,  x_dots,  y_dots,  theta_dots
     t += dt
 
