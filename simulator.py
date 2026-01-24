@@ -175,15 +175,17 @@ class solver:
         self.ys.insert(0, (self.ys[0]-self.v_dots[0]*np.sin(self.thetas[-1])*self.dt))
         self.thetas.insert(0, (self.thetas[0]-self.theta_dots[0]*self.dt))
 
-        # print(self.xs, self.ys, self.thetas)
+        print(self.xs, self.ys, self.thetas)
 
 
 
-    def solve(self, f, alpha): #advances state by time value, returns states
+    def solve(self, f, f_theta, torque): #advances state by time value, returns states
         #position solves
+
+         #force is a vector. change how you can apply force in different directions
         self.xs.append((f/self.m * np.cos(self.thetas[-1]) * self.dt*2) + 2*self.xs[-1]-self.xs[-2] )
         self.ys.append((f/self.m * np.sin(self.thetas[-1]) * self.dt*2) + 2*self.ys[-1]-self.ys[-2] )
-        self.thetas.append((1/2 * self.m * self.r**2 * alpha * self.dt**2 ) + 2*self.thetas[-1] - self.thetas[-2])
+        self.thetas.append((2 / self.m / self.r**2 * torque * self.dt**2 ) + 2*self.thetas[-1] - self.thetas[-2])
 
         # #vel solves
         # self.x_dots.append(f/self.m * np.cos(self.thetas[-1])*self.dt + self.x_dots[-1])
@@ -200,26 +202,30 @@ r = 0.01
 dt = 0.01
 xs = []
 ys = []
-f_fn     = lambda t: 1.0# + 0.01*t
+thetas = []
+
+#placeholder force and torque functions
+f_fn     = lambda t: -1.0*np.sin(2*t)
 alpha_fn = lambda t: -1*np.sin(t)+0.01*t 
 
-state0 = [0, 0, 0.6, 1, 0.3]  #should give in xytheta positions and 
+#initial state
+state0 = [0, 0, 0.7, 2, 0]  #should give in xytheta, vel, ang_vel 
 
 solver = solver(m, r, dt, state0)
 
 while t<10:
     f = f_fn(t)
-    alpha = alpha_fn(t)
-    # results = solver.solve(f, alpha)
-    results = solver.solve(0, 0)
+    torque = alpha_fn(t)
+    results = solver.solve(f,0, torque)    #force, force_angle, torque
+    # results = solver.solve(0.01, 0, 0)   #force, force_angle, torque
 
     xs = results[0]
     ys = results[1]
+    thetas = results[2]
     t += dt
 
-for i, (x, y) in enumerate(zip(xs, ys)):
-    print(f"{i:4d}: x = {x:.3f}, y = {y:.3f}")
-
+for i, (x, y, theta) in enumerate(zip(xs, ys, thetas)):
+    print(f"{i:4d}: x = {x:.3f}, y = {y:.3f}, theta = {theta:.3f}")
 
 # Example usage: for making splines
 # Hard-coded points (no randomness)
