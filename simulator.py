@@ -186,12 +186,30 @@ def visualize_spline_2d(spline, x_points, y_points, x_max, y_max,
 
 def plot_xy_trajectory(xs, ys, ax=None, label="Trajectory", linestyle='-'):
     """
-    xs: 1D array of x positions
-    ys: 1D array of y positions
+    xs: 1D array or list of x positions (handles nested lists)
+    ys: 1D array or list of y positions (handles nested lists)
     ax: optional matplotlib Axes to plot on
     """
-    xs = np.asarray(xs)
-    ys = np.asarray(ys)
+    def flatten_to_array(data):
+        """Convert nested lists/arrays to flat 1D array."""
+        result = []
+        for item in data:
+            # Handle nested lists/arrays
+            if isinstance(item, (list, tuple, np.ndarray)):
+                # If it's a sequence, take first element or flatten
+                if len(item) > 0:
+                    if isinstance(item[0], (list, tuple, np.ndarray)):
+                        result.append(float(item[0][0]) if len(item[0]) > 0 else 0.0)
+                    else:
+                        result.append(float(item[0]))
+                else:
+                    result.append(0.0)
+            else:
+                result.append(float(item))
+        return np.array(result, dtype=float)
+    
+    xs = flatten_to_array(xs)
+    ys = flatten_to_array(ys)
 
     if xs.shape != ys.shape:
         raise ValueError("xs and ys must have the same shape")
@@ -247,9 +265,9 @@ class solver:
         self.ys.insert(0, (self.ys[0]-self.v_dots[0]*np.sin(self.thetas[-1])*self.dt))
         self.thetas.insert(0, (self.thetas[0]-self.theta_dots[0]*self.dt))
 
-        self.x_dots.insert(0, 0)
-        self.y_dots.insert(0, 0)
-        self.theta_dots.insert(0, 0)
+        # self.x_dots.insert(0, 0)
+        # self.y_dots.insert(0, 0)
+        # self.theta_dots.insert(0, 0)
 
         print(self.xs, self.ys, self.thetas)
 
@@ -264,13 +282,13 @@ class solver:
         self.thetas.append((2 / self.m / self.r**2 * torque * self.dt**2 ) + 2*self.thetas[-1] - self.thetas[-2])
 
         # #vel solves
-        self.x_dots.append(f/self.m * np.cos(self.thetas[-1])*self.dt + self.x_dots[-1])
-        self.y_dots.append(f/self.m * np.sin(self.thetas[-1])*self.dt + self.y_dots[-1])
-        self.theta_dots.append(2 / self.m / self.r**2* torque *self.dt + self.theta_dots[-1])
+        # self.x_dots.append(f/self.m * np.cos(self.thetas[-1])*self.dt + self.x_dots[-1])
+        # self.y_dots.append(f/self.m * np.sin(self.thetas[-1])*self.dt + self.y_dots[-1])
+        # self.theta_dots.append(2 / self.m / self.r**2* torque *self.dt + self.theta_dots[-1])
 
         # print(len(self.xs), len(self.ys), len(self.x_dots), len(self.theta_dots))
 
-        return self.xs, self.ys, self.thetas, self.x_dots, self.y_dots, self.theta_dots
+        return self.xs, self.ys, self.thetas#, self.x_dots, self.y_dots, self.theta_dots
 
 class controller:
     def __init__(self,traj, kd_lin= 0, kp_lin = 0, kd_ang= 0, kp_ang = 0, dt = 0.01):
@@ -284,27 +302,24 @@ class controller:
         self.kp_ang = kp_ang
 
         
-    def PD_control(self, targ, state): #Targ = [x, y, vel] state = [x, y, theta, x_dot, y_dot, theta_dot]
-        dx = targ[0]-state[0]
-        dy = targ[1]-state[1]
-        v_cur = np.sqrt(state[3]**2+state[4]**2)
-        f = self.kp_lin * np.sqrt((targ[0]-state[0])**2 + (targ[1]-state[1])**2) + self.kd_lin* (targ[2]-v_cur)
-        torque =self.kp_ang * (np.atan2(dy,dx)-state[2]) - self.kd_ang*state[5]
-        return f, torque
+    def PD_control(self, targ, xs, ys, thetas): #Targ = [x, y, vel] state = [x, y, theta]       , x_dot, y_dot, theta_dot]
+        # Position errors
+        dx = targ[0]-xs[-1]
+        dy = targ[1]-ys[-1]
+        dist_error = np.sqrt(dx**2 + dy**2)
 
-def trim_history(results_tuple):
-    """Trim all arrays in results to the same length (minimum length)."""
-    min_len = min(len(h) for h in results_tuple)
-    # Convert to numpy arrays properly, handling numpy scalars in lists
-    # First convert each element to float, then create array
-    def to_array(lst):
-        return np.array([float(x) for x in lst[:min_len]], dtype=float)
-    return tuple(to_array(h) for h in results_tuple)
+        v_x = (xs[-1]-xs[-2])/self.dt
+        v_y = (ys[-1]-ys[-2])/self.dt
+        theta_dot = (thetas[-1]-thetas[-2])/self.dt
+        v_cur = np.sqrt(v_x**2+v_y**2)
+        f = self.kp_lin * dist_error + self.kd_lin * (targ[2] - v_cur)
+        torque =self.kp_ang * (np.arctan2(dy,dx)-thetas[-1]) - self.kd_ang*theta_dot
+        return f, torque
 
 '''MAINC ODE BEGINS HERE'''        
 #initialize starting variables
 t_0, t_f, t, dt = 0, 10, 0, 0.01
-m, r = 1, 0.01
+m, r = 1, 0.1
 xs, ys, thetas = [], [], []
 control_points = [(0, 0), (2, 4), (8, 7), (10, 10)]
 x_max, y_max = 10.0, 10.0 #graph x and y axis max
@@ -315,11 +330,11 @@ alpha_fn = lambda t: -1*np.sin(t)+0.01*t
 
 f, torque = 0, 0
 #initial state
-state0 = [0, 0, 0.7, 1, 0]  #should give in xytheta, vel, ang_vel 
+state0 = [0, 0, 1.7, 0.5, 0]  #should give in xytheta, vel, ang_vel 
 (spline_x, spline_y), traj = generate_spline(control_points, dt=dt, spline_type="cubic", v = v_traj)
 
 solver = solver(m, r, dt, state0)
-controller  = controller(traj, kd_lin= 0.1, kp_lin = 1, kd_ang= 0.1, kp_ang = 0.3, dt = dt )
+controller  = controller(traj, kd_lin= 0.0, kp_lin = 0.1, kd_ang= 0.0, kp_ang = 0.1, dt = dt )
 
 
 
@@ -327,34 +342,14 @@ controller  = controller(traj, kd_lin= 0.1, kp_lin = 1, kd_ang= 0.1, kp_ang = 0.
 while t<t_f:
     # f = f_fn(t)
     # torque = alpha_fn(t)
-    xs,  ys,  thetas,  x_dots,  y_dots,  theta_dots = solver.solve(f,0, torque)    #force, force_angle, torque
-    # results = solver.solve(0.01, 0, 0)   #force, force_angle, torque
-    lengths = [len(xs), len(ys), len(thetas), len(x_dots), len(y_dots), len(theta_dots)]
-    print(len(lengths))
-
-    if len(set(lengths)) != 1:
-        raise ValueError(f"History lengths do not match: {lengths}")
-    else:
-        print("lengths match")
-    # Trim results to same length before stacking
-    results = np.vstack((xs, ys, thetas, x_dots, y_dots, theta_dots)).T
-    print_results(results)
-
-
-    # results_trimmed = trim_history(results)
-    # history = np.column_stack(results_trimmed)
-
-
-    xs = results[0]
-    ys = results[1]
-
-    f, torque = controller.PD_control(traj, results[-1])
+    xs,  ys,  thetas = solver.solve(f,0, torque)    #force, force_angle, torque
+    f, torque = controller.PD_control(traj, xs, ys, thetas)
     # xs,  ys,  thetas,  x_dots,  y_dots,  theta_dots
-    t += dt
+    t += dt 
 
 
 #debugging
-print_results(results)
+# print_results(results)
 
 
 # Create spline plot (returns fig, ax)
