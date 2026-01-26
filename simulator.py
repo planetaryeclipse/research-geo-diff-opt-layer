@@ -221,8 +221,8 @@ def plot_xy_trajectory(xs, ys, ax=None, label="Trajectory", linestyle='-'):
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.set_aspect("equal", adjustable="box")
-    ax.set_xlim(-10, 10)
-    ax.set_ylim(-10, 10)
+    ax.set_xlim(-20, 20)
+    ax.set_ylim(-20, 20)
     ax.grid(True)
 
     return ax
@@ -325,8 +325,8 @@ def plot_xy_trajectory_with_time(xs, ys, times=None, dt=None, ax=None, label="Tr
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.set_aspect("equal", adjustable="box")
-    ax.set_xlim(-10, 10)
-    ax.set_ylim(-10, 10)
+    ax.set_xlim(-20, 20)
+    ax.set_ylim(-20, 20)
     ax.grid(True, alpha=0.3)
     ax.set_title(f"{label} (colored by time)")
     
@@ -336,7 +336,7 @@ def plot_xy_trajectory_with_time(xs, ys, times=None, dt=None, ax=None, label="Tr
 def plot_both_trajectories_with_time(ideal_xs, ideal_ys, ideal_times, 
                                      ode_xs, ode_ys, ode_times,
                                      ax=None, figsize=(12, 10),
-                                     ideal_colormap='viridis', ode_colormap='plasma',
+                                     ideal_colormap='viridis', ode_colormap='viridis',
                                      ideal_label='Ideal Trajectory', ode_label='ODE Trajectory'):
     """
     Plot both ideal and ODE trajectories on the same plot with time visualization.
@@ -362,7 +362,7 @@ def plot_both_trajectories_with_time(ideal_xs, ideal_ys, ideal_times,
     ideal_colormap : str
         Colormap for ideal trajectory (default: 'viridis')
     ode_colormap : str
-        Colormap for ODE trajectory (default: 'plasma')
+        Colormap for ODE trajectory (default: 'viridis')
     ideal_label : str
         Label for ideal trajectory
     ode_label : str
@@ -445,8 +445,8 @@ def plot_both_trajectories_with_time(ideal_xs, ideal_ys, ideal_times,
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.set_aspect("equal", adjustable="box")
-    ax.set_xlim(-10, 10)
-    ax.set_ylim(-10, 10)
+    ax.set_xlim(-20, 20)
+    ax.set_ylim(-20, 20)
     ax.grid(True, alpha=0.3)
     ax.set_title("Ideal vs ODE Trajectory (colored by time)")
     ax.legend()
@@ -540,10 +540,10 @@ class controller:
         theta_dot = (thetas[-1]-thetas[-2])/self.dt
         v_cur = np.sqrt(v_x**2+v_y**2)
         f = self.kp_lin * dist_error + self.kd_lin * (targ[2] - v_cur)
-        torque =self.kp_ang * (np.arctan2(dy,dx)-thetas[-1]) - self.kd_ang*theta_dot
+        torque =self.kp_ang * (np.atan2(dy,dx)-thetas[-1]) - self.kd_ang*theta_dot
         return f, torque
 
-'''MAINC ODE BEGINS HERE'''        
+'''MAIN SCODE BEGINS HERE'''        
 #initialize starting variables
 t_0, t_f, t, dt = 0, 10, 0, 0.01
 m, r = 1, 0.1
@@ -551,19 +551,17 @@ xs, ys, thetas = [], [], []
 control_points = [(0, 0), (2, 4), (8, 7), (10, 10)]
 x_max, y_max = 20.0, 20.0 #graph x and y axis max
 v_traj = 1
-#placeholder force and torque functions
+#Old force and torque functions
 f_fn     = lambda t: -1.0*np.sin(2*t)
 alpha_fn = lambda t: -1*np.sin(t)+0.01*t 
 
 f, torque = 0, 0
 #initial state
-state0 = [0, 0, 1.7, 0.5, 0]  #should give in xytheta, vel, ang_vel 
+state0 = [0, 0, 1.7, 0, 0]  #should give in x,y,theta, vel, ang_vel 
 (spline_x, spline_y), traj = generate_spline(control_points, dt=dt, spline_type="cubic", v = v_traj)
 
 solver = solver(m, r, dt, state0)
-controller  = controller(traj, kd_lin= 0.0, kp_lin = 0.1, kd_ang= 0.0, kp_ang = 0.1, dt = dt )
-
-
+controller  = controller(traj, kd_lin= 0.0, kp_lin = 0.008, kd_ang= 0.0, kp_ang = 0.1, dt = dt )
 
 #solver loop - track time for visualization
 times = []
@@ -578,18 +576,18 @@ while t<t_f:
 
 
 #debugging
-# print_results(results)
+# print_results(xs, ys, thetas, traj=traj, times=times, dt=dt)
 
 
 # Create spline plot (returns fig, ax)
 pts = np.array(control_points)
-fig, ax = visualize_spline_2d((spline_x, spline_y), pts[:, 0], pts[:, 1], x_max, y_max)
+# fig, ax = visualize_spline_2d((spline_x, spline_y), pts[:, 0], pts[:, 1], x_max, y_max)
 
 # Plot trajectory on the SAME axes (regular plot)
-plot_xy_trajectory(xs, ys, ax=ax, label="ODE Trajectory", linestyle="--")
+# plot_xy_trajectory(xs, ys, ax=ax, label="ODE Trajectory", linestyle="--")
 
-ax.legend()
-plt.show()
+# ax.legend()
+# plt.show()
 
 # Create a combined plot with time visualization for both trajectories
 # Extract ideal trajectory (spline) points
