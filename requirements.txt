@@ -1,4 +1,7 @@
 numpy
 matplotlib
 scipy
-
+sympy
+cvxpy
+ipykernel
+sortedcontainers
