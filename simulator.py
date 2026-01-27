@@ -7,17 +7,6 @@ from scipy.integrate import solve_ivp
 from scipy.interpolate import CubicSpline, UnivariateSpline
 
 
-def print_results(results):
-    xs, ys, thetas, x_dots, y_dots, theta_dots = results
-
-    for i, (x, y, theta, xd, yd, thetad) in enumerate(
-        zip(xs, ys, thetas, x_dots, y_dots, theta_dots)
-    ):
-        print(
-            f"{i:4d}: "
-            f"x = {x:.3f}, y = {y:.3f}, theta = {theta:.3f}, "
-            f"x_dot = {xd:.3f}, y_dot = {yd:.3f}, theta_dot = {thetad:.3f}"
-        )
 
 
 def generate_spline(points, dt=0.01, spline_type="cubic", v=1.0):
@@ -113,257 +102,6 @@ def generate_spline(points, dt=0.01, spline_type="cubic", v=1.0):
     traj = np.column_stack((xs_targ, ys_targ, vs_targ))
 
     return (spline_x, spline_y), traj
-
-
-def visualize_spline_2d(
-    spline,
-    x_points,
-    y_points,
-    x_max,
-    y_max,
-    n_eval_points=200,
-    figsize=(10, 6),
-    show_points=True,
-):
-    """
-    Visualize a 2D spline curve with matplotlib.
-
-    Parameters:
-    -----------
-    spline : scipy interpolation object or tuple (spline_x, spline_y)
-        The spline function(s) to visualize. If tuple, assumes parametric spline.
-    x_points : array
-        X coordinates of the control points
-    y_points : array
-        Y coordinates of the control points
-    x_max : float
-        Maximum x value for evaluation range
-    y_max : float
-        Maximum y value (for axis limits)
-    n_eval_points : int
-        Number of points to evaluate for smooth curve
-    figsize : tuple
-        Figure size (width, height)
-    show_points : bool
-        Whether to show the control points
-
-    Returns:
-    --------
-    fig : matplotlib figure
-        The figure object
-    ax : matplotlib axes
-        The axes object
-    """
-    # Check if spline is parametric (tuple) or regular
-    if isinstance(spline, tuple):
-        # Parametric spline: evaluate at parameter values from 0 to 1
-        spline_x, spline_y = spline
-        t_eval = np.linspace(0, 1, n_eval_points)
-        x_eval = spline_x(t_eval)
-        y_eval = spline_y(t_eval)
-    else:
-        # Regular spline: evaluate at x values
-        x_eval = np.linspace(x_points.min(), x_points.max(), n_eval_points)
-        y_eval = spline(x_eval)
-
-    # Create figure
-    fig, ax = plt.subplots(figsize=figsize)
-
-    # Plot the spline curve
-    ax.plot(x_eval, y_eval, "b-", label="Spline Curve", linewidth=2.5, zorder=1)
-
-    # Plot control points if requested
-    if show_points:
-        ax.plot(
-            x_points,
-            y_points,
-            "ro",
-            markersize=10,
-            label="Control Points",
-            zorder=2,
-            markeredgecolor="darkred",
-            markeredgewidth=1.5,
-        )
-
-    # Formatting
-    ax.set_xlabel("x", fontsize=12)
-    ax.set_ylabel("y", fontsize=12)
-    ax.set_title("2D Spline Visualization", fontsize=14, fontweight="bold")
-    ax.legend(fontsize=10)
-    ax.grid(True, alpha=0.3, linestyle="--")
-    ax.set_xlim(0, x_max)
-    ax.set_ylim(0, y_max)
-
-    # Add some styling
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-
-    plt.tight_layout()
-
-    return fig, ax
-
-
-def plot_xy_trajectory(xs, ys, ax=None, label="Trajectory", linestyle="-"):
-    """
-    xs: 1D array or list of x positions (handles nested lists)
-    ys: 1D array or list of y positions (handles nested lists)
-    ax: optional matplotlib Axes to plot on
-    """
-
-    def flatten_to_array(data):
-        """Convert nested lists/arrays to flat 1D array."""
-        result = []
-        for item in data:
-            # Handle nested lists/arrays
-            if isinstance(item, (list, tuple, np.ndarray)):
-                # If it's a sequence, take first element or flatten
-                if len(item) > 0:
-                    if isinstance(item[0], (list, tuple, np.ndarray)):
-                        result.append(float(item[0][0]) if len(item[0]) > 0 else 0.0)
-                    else:
-                        result.append(float(item[0]))
-                else:
-                    result.append(0.0)
-            else:
-                result.append(float(item))
-        return np.array(result, dtype=float)
-
-    xs = flatten_to_array(xs)
-    ys = flatten_to_array(ys)
-
-    if xs.shape != ys.shape:
-        raise ValueError("xs and ys must have the same shape")
-
-    if ax is None:
-        fig, ax = plt.subplots()
-
-    ax.plot(xs, ys, linestyle=linestyle, label=label)
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
-    ax.set_aspect("equal", adjustable="box")
-    ax.set_xlim(-20, 20)
-    ax.set_ylim(-20, 20)
-    ax.grid(True)
-
-    return ax
-
-
-def plot_xy_trajectory_with_time(
-    xs,
-    ys,
-    times=None,
-    dt=None,
-    ax=None,
-    label="Trajectory",
-    colormap="viridis",
-    linewidth=2,
-    alpha=0.8,
-):
-    """
-    Plot trajectory with time visualization using color mapping.
-
-    Parameters:
-    -----------
-    xs : array-like
-        1D array or list of x positions (handles nested lists)
-    ys : array-like
-        1D array or list of y positions (handles nested lists)
-    times : array-like, optional
-        Time values for each point. If None, will generate from dt or index.
-    dt : float, optional
-        Time step. Used to generate times if times is None.
-    ax : matplotlib Axes, optional
-        Axes to plot on. If None, creates new figure.
-    label : str
-        Label for the trajectory
-    colormap : str
-        Matplotlib colormap name (default: 'viridis')
-    linewidth : float
-        Line width for the trajectory
-    alpha : float
-        Transparency of the line
-
-    Returns:
-    --------
-    fig : matplotlib figure
-        The figure object (only if ax is None)
-    ax : matplotlib axes
-        The axes object
-    """
-
-    def flatten_to_array(data):
-        """Convert nested lists/arrays to flat 1D array."""
-        result = []
-        for item in data:
-            if isinstance(item, (list, tuple, np.ndarray)):
-                if len(item) > 0:
-                    if isinstance(item[0], (list, tuple, np.ndarray)):
-                        result.append(float(item[0][0]) if len(item[0]) > 0 else 0.0)
-                    else:
-                        result.append(float(item[0]))
-                else:
-                    result.append(0.0)
-            else:
-                result.append(float(item))
-        return np.array(result, dtype=float)
-
-    xs = flatten_to_array(xs)
-    ys = flatten_to_array(ys)
-
-    if xs.shape != ys.shape:
-        raise ValueError("xs and ys must have the same shape")
-
-    n_points = len(xs)
-
-    # Generate time array if not provided
-    if times is None:
-        if dt is not None:
-            times = np.arange(0, n_points * dt, dt)[:n_points]
-        else:
-            times = np.arange(n_points)  # Use index as time
-
-    times = np.asarray(times, dtype=float)
-    if len(times) != n_points:
-        # Truncate or pad times to match
-        if len(times) > n_points:
-            times = times[:n_points]
-        else:
-            times = np.pad(times, (0, n_points - len(times)), mode="edge")
-
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 8))
-    else:
-        fig = ax.figure
-
-    # Create colormap
-    cmap = plt.get_cmap(colormap)
-    norm = plt.Normalize(vmin=times.min(), vmax=times.max())
-
-    # Plot trajectory with color mapping
-    # Use LineCollection for smooth color transitions
-    from matplotlib.collections import LineCollection
-
-    points = np.array([xs, ys]).T.reshape(-1, 1, 2)
-    segments = np.concatenate([points[:-1], points[1:]], axis=1)
-    lc = LineCollection(
-        segments, cmap=cmap, norm=norm, linewidth=linewidth, alpha=alpha
-    )
-    lc.set_array(times)
-    line = ax.add_collection(lc)
-
-    # Add colorbar
-    cbar = plt.colorbar(line, ax=ax)
-    cbar.set_label("Time", rotation=270, labelpad=15)
-
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
-    ax.set_aspect("equal", adjustable="box")
-    ax.set_xlim(-20, 20)
-    ax.set_ylim(-20, 20)
-    ax.grid(True, alpha=0.3)
-    ax.set_title(f"{label} (colored by time)")
-
-    return fig, ax
 
 
 def plot_both_trajectories_with_time(
@@ -511,23 +249,6 @@ def plot_both_trajectories_with_time(
 
     return fig, ax
 
-
-# def system function
-def make_fun(v_fn, omega_fn):
-    def fun(t, y):
-        x, y_pos, theta = y
-        v = v_fn(t, y)
-        omega = omega_fn(t, y)
-        return np.array([v * np.cos(theta), v * np.sin(theta), omega])
-
-    return fun
-
-
-# define profiles (can depend on t and/or y)
-# v_fn     = lambda t, y: 1.0 + 0.01*t
-# omega_fn = lambda t, y: 0.1*t
-
-
 # fun = make_fun(v_fn, omega_fn)
 class solver:
     def __init__(
@@ -653,7 +374,7 @@ class controller:
 # initialize starting variables
 t_0, t_f, t, dt = 0, 10, 0, 0.01
 m, r = 1, 0.1
-control_points = [(0, 0), (2, 4), (8, 7), (10, 10)]
+control_points = [(0, 0), (1, 4), (9, 7), (10, 10)]
 x_max, y_max = 20.0, 20.0  # graph x and y axis max
 v_traj = 1
 # Old force and torque functions
@@ -722,7 +443,7 @@ fig2, ax2 = plot_both_trajectories_with_time(
 plt.show()
 
 # plot the error history of the controller over time
-dist_err_hist = np.sqrt((traj_xs - x_hist[:2])**2 + (traj_ys - y_hist[2:])**2)
+dist_err_hist = np.sqrt((traj_xs - x_hist[2:])**2 + (traj_ys - y_hist[2:])**2)
 
 fig, ax = plt.subplots()
 ax.plot(traj_times, dist_err_hist)
