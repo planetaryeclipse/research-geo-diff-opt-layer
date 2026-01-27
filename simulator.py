@@ -5,6 +5,10 @@ import scipy as sp
 import scipy.integrate as integrate
 from scipy.integrate import solve_ivp
 from scipy.interpolate import CubicSpline, UnivariateSpline
+import torch
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
+from torch.nn.modules.module import Module
 
 
 
@@ -250,7 +254,7 @@ def plot_both_trajectories_with_time(
     return fig, ax
 
 # fun = make_fun(v_fn, omega_fn)
-class solver:
+class Solver:
     def __init__(
         self, m=1, r=0.01, dt=0.01, state0=None
     ):  # change so you can pass in init pos and init vel
@@ -283,23 +287,23 @@ class solver:
         print(self.xs, self.ys, self.thetas)
 
     def solve(
-        self, f, f_theta, torque
+        self, applied_force, f_theta, applied_torque
     ) -> None:  # advances state by time value, returns states
         # position solves
 
         # force is a vector. change how you can apply force in different directions
         self.xs.append(
-            (f / self.m * np.cos(self.thetas[-1]) * self.dt * 2)
+            (applied_force / self.m * np.cos(self.thetas[-1]) * self.dt * 2)
             + 2 * self.xs[-1]
             - self.xs[-2]
         )
         self.ys.append(
-            (f / self.m * np.sin(self.thetas[-1]) * self.dt * 2)
+            (applied_force / self.m * np.sin(self.thetas[-1]) * self.dt * 2)
             + 2 * self.ys[-1]
             - self.ys[-2]
         )
         self.thetas.append(
-            (2 / self.m / self.r**2 * torque * self.dt**2)
+            (2 / self.m / self.r**2 * applied_torque * self.dt**2)
             + 2 * self.thetas[-1]
             - self.thetas[-2]
         )
@@ -308,8 +312,6 @@ class solver:
         # self.x_dots.append(f/self.m * np.cos(self.thetas[-1])*self.dt + self.x_dots[-1])
         # self.y_dots.append(f/self.m * np.sin(self.thetas[-1])*self.dt + self.y_dots[-1])
         # self.theta_dots.append(2 / self.m / self.r**2* torque *self.dt + self.theta_dots[-1])
-
-        # print(len(self.xs), len(self.ys), len(self.x_dots), len(self.theta_dots)) # , self.x_dots, self.y_dots, self.theta_dots
 
     @property
     def history(self):
@@ -320,7 +322,7 @@ class solver:
         return (self.xs[-1], self.ys[-1], self.thetas[-1])
 
 
-class controller:
+class Controller:
     def __init__(self, traj, kd_lin=0, kp_lin=0, kd_ang=0, kp_ang=0, dt=0.01):
         if traj is None:
             traj = [[0.0, 0.0]]
@@ -369,66 +371,75 @@ class controller:
 
         return f, torque
 
+class NeuralNetworkController(nn.Module):
+    def __init__(self, num_classes=53):
+        super(NeuralNetworkController, self).__init__()
+        # Where we define all the parts of the model
+        self.base_model = timm.create_model('efficientnet_b0', pretrained=True)
+        self.features = nn.Sequential(*list(self.base_model.children())[:-1])
+
+        enet_out_size = 1280
+        # Make a classifier
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(enet_out_size, num_classes)
+        )
+    
+    def forward(self, x):
+        # Connect these parts and return the output
+        x = self.features(x)
+        output = self.classifier(x)
+        return output
+
+    
+def save_data_to_file(target_trajectory, vehicle_trajectory, controller_output): #saves target x, y | current state x y theta | controller output
+    
+    pass
 
 """MAIN SCODE BEGINS HERE"""
 # initialize starting variables
 t_0, t_f, t, dt = 0, 10, 0, 0.01
-m, r = 1, 0.1
+vehicle_mass, vehicle_radius = 1, 0.1
 control_points = [(0, 0), (1, 4), (9, 7), (10, 10)]
 x_max, y_max = 20.0, 20.0  # graph x and y axis max
 v_traj = 1
-# Old force and torque functions
-f_fn = lambda t: -1.0 * np.sin(2 * t)
-alpha_fn = lambda t: -1 * np.sin(t) + 0.01 * t
 
-f, torque = 0, 0
+applied_force, applied_torque = 0, 0
+applied_force_hist, applied_torque_hist = [], []
 # initial state
-state0 = [0, 0, 1.7, 0, 0]  # should give in x,y,theta, vel, ang_vel
-(spline_x, spline_y), traj = generate_spline(
+initial_state = [0, 0, 1.7, 0, 0]  # should give in x,y,theta, vel, ang_vel
+(spline_x, spline_y), target_trajectory = generate_spline(
     control_points, dt=dt, spline_type="cubic", v=v_traj
 )
 
-solver = solver(m, r, dt, state0)
-controller = controller(traj, kd_lin=0.5, kp_lin=0.5, kd_ang=0.5, kp_ang=1.0, dt=dt)
+solver = Solver(vehicle_mass, vehicle_radius, dt, initial_state)
+controller = Controller(target_trajectory, kd_lin=0.5, kp_lin=0.5, kd_ang=0.5, kp_ang=1.0, dt=dt)
 
 # solver loop - track time for visualization
 times = []
-for i in range(len(traj)):
-    # f = f_fn(t)
-    # torque = alpha_fn(t)
-    solver.solve(f, 0, torque)  # force, force_angle, torque
-
-    current_traj = traj[i, :]
-    f, torque = controller.PD_control(current_traj, solver.state)
+for i in range(len(target_trajectory)):
+    solver.solve(applied_force, 0, applied_torque)  # force, force_angle, torque
+    current_traj = target_trajectory[i, :]
+    applied_force, applied_torque = controller.PD_control(current_traj, solver.state)
 
     times.append(t)
+    applied_force_hist.append(applied_force)
+    applied_torque_hist.append(applied_torque)
     t += dt
 
-# debugging
-# print_results(xs, ys, thetas, traj=traj, times=times, dt=dt)
+
 
 
 # Create spline plot (returns fig, ax)
 pts = np.array(control_points)
-# fig, ax = visualize_spline_2d((spline_x, spline_y), pts[:, 0], pts[:, 1], x_max, y_max)
 
-# Plot trajectory on the SAME axes (regular plot)
-# plot_xy_trajectory(xs, ys, ax=ax, label="ODE Trajectory", linestyle="--")
-
-# ax.legend()
-# plt.show()
-
-# Create a combined plot with time visualization for both trajectories
-# Extract ideal trajectory (spline) points
-
-traj_xs = traj[:, 0]
-traj_ys = traj[:, 1]
+traj_xs = target_trajectory[:, 0]
+traj_ys = target_trajectory[:, 1]
 traj_times = np.arange(0, len(traj_xs) * dt, dt)[: len(traj_xs)]
 
 # Extract ODE trajectory points and times
 times_array = np.array(times, dtype=float)
-
-(x_hist, y_hist, _) = solver.history
+(x_hist, y_hist, theta_hist) = solver.history
 
 # Plot both trajectories with time visualization
 fig2, ax2 = plot_both_trajectories_with_time(
@@ -441,6 +452,11 @@ fig2, ax2 = plot_both_trajectories_with_time(
     ode_colormap="rainbow",
 )
 plt.show()
+
+vehicle_trajectory = (x_hist[2:], y_hist[2:], theta_hist[2:])
+controller_output = (applied_force_hist, applied_torque_hist)
+save_data_to_file(target_trajectory, vehicle_trajectory, controller_output)
+
 
 # plot the error history of the controller over time
 dist_err_hist = np.sqrt((traj_xs - x_hist[2:])**2 + (traj_ys - y_hist[2:])**2)
