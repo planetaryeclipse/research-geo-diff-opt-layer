@@ -6,9 +6,11 @@ import scipy.integrate as integrate
 from scipy.integrate import solve_ivp
 from scipy.interpolate import CubicSpline, UnivariateSpline
 import torch
+from torch._numpy import float64
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.modules.module import Module
+from pathlib import Path
 
 
 
@@ -392,15 +394,42 @@ class NeuralNetworkController(nn.Module):
         return output
 
     
-def save_data_to_file(target_trajectory, vehicle_trajectory, controller_output): #saves target x, y | current state x y theta | controller output
-    
-    pass
+def save_data_to_file(filepath, target_trajectory, vehicle_trajectory, controller_output, dt): #saves target x, y | current state x y theta | controller output
+    filename = "data"
+
+    root = Path(__file__).resolve().parent
+    data_dir = root / "data"
+    data_dir.mkdir(exist_ok=True)
+
+    target_xs, target_ys = target_trajectory
+    vehicle_xs, vehicle_ys, vehicle_thetas = vehicle_trajectory
+    forces, torques = controller_output
+
+    #Make sure all arrays same length
+    lengths = list(map(len, [target_xs, target_ys, vehicle_xs, vehicle_ys, vehicle_thetas, forces, torques]))
+    if len(set(lengths)) != 1:
+        raise ValueError(f"Length mismatch across lists: {lengths}")
+
+    data = np.column_stack([target_xs, target_ys, vehicle_xs, vehicle_ys, vehicle_thetas, forces, torques]).astype(np.float64)
+
+    k = 1
+    while True:
+        filepath = data_dir / f"{filename}{k}.npz"
+        if not filepath.exists():
+            break
+        k += 1
+
+    meta = {"data": data}
+    meta["dt"] = np.array([dt], dtype=np.float32)
+    np.savez_compressed(filepath, **meta)
+
+
 
 """MAIN SCODE BEGINS HERE"""
 # initialize starting variables
 t_0, t_f, t, dt = 0, 10, 0, 0.01
 vehicle_mass, vehicle_radius = 1, 0.1
-control_points = [(0, 0), (1, 4), (9, 7), (10, 10)]
+control_points = [(0, 0), (1, 1), (2, 9), (10, 10)]
 x_max, y_max = 20.0, 20.0  # graph x and y axis max
 v_traj = 1
 
@@ -453,9 +482,11 @@ fig2, ax2 = plot_both_trajectories_with_time(
 )
 plt.show()
 
+target_traj_tuple = (traj_xs, traj_ys)
 vehicle_trajectory = (x_hist[2:], y_hist[2:], theta_hist[2:])
 controller_output = (applied_force_hist, applied_torque_hist)
-save_data_to_file(target_trajectory, vehicle_trajectory, controller_output)
+filepath = ""
+# save_data_to_file(filepath, target_traj_tuple, vehicle_trajectory, controller_output, dt)
 
 
 # plot the error history of the controller over time
@@ -464,4 +495,4 @@ dist_err_hist = np.sqrt((traj_xs - x_hist[2:])**2 + (traj_ys - y_hist[2:])**2)
 fig, ax = plt.subplots()
 ax.plot(traj_times, dist_err_hist)
 
-plt.show()
+# plt.show()
