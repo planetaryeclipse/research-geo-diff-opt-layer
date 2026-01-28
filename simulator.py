@@ -18,10 +18,8 @@ from optimal_traj_control.automated_test.optimal_control import (
 
 
 
-def generate_spline(points, t_f, dt=0.01, spline_type="cubic"):
-   
+def generate_spline(t_f, points = None, dt=0.01, spline_type="cubic"):
     spline_method = CubicSpline  # for convenience
-    
     t = np.linspace(0, t_f, int(t_f / dt))
     points = np.array(
         # defines a smoothed triangular path
@@ -48,28 +46,16 @@ def generate_spline(points, t_f, dt=0.01, spline_type="cubic"):
         np.atan2(traj_y, traj_x),
         np.atan2(dot_traj_y, dot_traj_x),
     )
-    traj = (traj_x, traj_y)
+    traj = (traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta)
     fig, ax = plt.subplots()
     ax.plot(traj_x, traj_y)
 
-    plt.show()
-    return (x_spline, y_spline), traj
+    # plt.show()
+    print("traj_x" ,len(traj_x))
+    return traj, t
 
 
-def plot_both_trajectories_with_time(
-    ideal_xs,
-    ideal_ys,
-    ideal_times,
-    ode_xs,
-    ode_ys,
-    ode_times,
-    ax=None,
-    figsize=(12, 10),
-    ideal_colormap="viridis",
-    ode_colormap="viridis",
-    ideal_label="Ideal Trajectory",
-    ode_label="ODE Trajectory",
-):
+
     """
     Plot both ideal and ODE trajectories on the same plot with time visualization.
 
@@ -201,91 +187,18 @@ def plot_both_trajectories_with_time(
 
     return fig, ax
 
-# fun = make_fun(v_fn, omega_fn)
-class Solver:
-    def __init__(
-        self, m=1, r=0.01, dt=0.01, state0=None
-    ):  # change so you can pass in init pos and init vel
-        # state0: [x_0, y_0, theta_0, vel_0, theta_dot_0]
 
-        if state0 is None:
-            state0 = [0.0, 0.0, 0.0, 0.0, 0.0]
-        self.m = m
-        self.r = r
-        self.dt = dt
-        self.xs, self.ys, self.thetas = [[v] for v in state0[:3]]
-        self.v_dots, self.theta_dots = [[v] for v in state0[3:]]
-        # Initialize x_dots and y_dots as lists (not numpy arrays) so we can append later
-        self.x_dots = [self.v_dots[0] * np.cos(self.thetas[0])]
-        self.y_dots = [self.v_dots[0] * np.sin(self.thetas[0])]
-
-        # gives second position values for second derivative solver by using velocity
-        self.xs.insert(
-            0, (self.xs[0] - self.v_dots[0] * np.cos(self.thetas[-1]) * self.dt)
-        )
-        self.ys.insert(
-            0, (self.ys[0] - self.v_dots[0] * np.sin(self.thetas[-1]) * self.dt)
-        )
-        self.thetas.insert(0, (self.thetas[0] - self.theta_dots[0] * self.dt))
-
-        # self.x_dots.insert(0, 0)
-        # self.y_dots.insert(0, 0)
-        # self.theta_dots.insert(0, 0)
-
-        print(self.xs, self.ys, self.thetas)
-
-    def solve(
-        self, applied_force, f_theta, applied_torque
-    ) -> None:  # advances state by time value, returns states
-        # position solves
-
-        # force is a vector. change how you can apply force in different directions
-        self.xs.append(
-            (applied_force / self.m * np.cos(self.thetas[-1]) * self.dt * 2)
-            + 2 * self.xs[-1]
-            - self.xs[-2]
-        )
-        self.ys.append(
-            (applied_force / self.m * np.sin(self.thetas[-1]) * self.dt * 2)
-            + 2 * self.ys[-1]
-            - self.ys[-2]
-        )
-        self.thetas.append(
-            (2 / self.m / self.r**2 * applied_torque * self.dt**2)
-            + 2 * self.thetas[-1]
-            - self.thetas[-2]
-        )
-
-        # #vel solves
-        # self.x_dots.append(f/self.m * np.cos(self.thetas[-1])*self.dt + self.x_dots[-1])
-        # self.y_dots.append(f/self.m * np.sin(self.thetas[-1])*self.dt + self.y_dots[-1])
-        # self.theta_dots.append(2 / self.m / self.r**2* torque *self.dt + self.theta_dots[-1])
-
-    @property
-    def history(self):
-        return (self.xs, self.ys, self.thetas)
-
-    @property
-    def state(self):
-        return (self.xs[-1], self.ys[-1], self.thetas[-1])
-
-def save_data_to_file(filepath, target_trajectory, vehicle_trajectory, controller_output, dt): #saves target x, y | current state x y theta | controller output
+def save_data_to_file(filepath,t, target_trajectory, vehicle_trajectory, controller_output, dt): #saves target x, y | current state x y theta | controller output
     filename = "data"
 
     root = Path(__file__).resolve().parent
     data_dir = root / "data"
     data_dir.mkdir(exist_ok=True)
 
-    target_xs, target_ys = target_trajectory
-    vehicle_xs, vehicle_ys, vehicle_thetas = vehicle_trajectory
-    forces, torques = controller_output
+    print(t.shape,target_trajectory.shape,vehicle_trajectory.shape, controller_output.shape  )
 
-    #Make sure all arrays same length
-    lengths = list(map(len, [target_xs, target_ys, vehicle_xs, vehicle_ys, vehicle_thetas, forces, torques]))
-    if len(set(lengths)) != 1:
-        raise ValueError(f"Length mismatch across lists: {lengths}")
-
-    data = np.column_stack([target_xs, target_ys, vehicle_xs, vehicle_ys, vehicle_thetas, forces, torques]).astype(np.float64)
+    t = t.reshape(500, 1)
+    data = np.concatenate([t, target_trajectory, vehicle_trajectory, controller_output], axis=1)
 
     k = 1
     while True:
@@ -294,152 +207,189 @@ def save_data_to_file(filepath, target_trajectory, vehicle_trajectory, controlle
             break
         k += 1
 
-    meta = {"data": data}
-    meta["dt"] = np.array([dt], dtype=np.float32)
-    np.savez_compressed(filepath, **meta)
-
-class Controller:
-    def __init__(self, traj, kd_lin=0, kp_lin=0, kd_ang=0, kp_ang=0, dt=0.01):
-        if traj is None:
-            traj = [[0.0, 0.0]]
-        self.traj = traj
-        self.dt = dt
-        self.kd_lin = kd_lin
-        self.kp_lin = kp_lin
-        self.kd_ang = kd_ang
-        self.kp_ang = kp_ang
-
-        # controller error history so we can evaluate derivatives
-        self.prev_lin_err = 0.0
-        self.prev_ang_err = 0.0
-
-    def PD_control(
-        self, traj_target, state
-    ):  # Targ = [x, y, vel] state = [x, y, theta]       , x_dot, y_dot, theta_dot]
-
-        x_traj, y_traj = traj_target
-        x, y, theta = state
-
-        # Position errors
-        dx = x_traj - x
-        dy = y_traj - y
-        err_lin = np.sqrt(dx**2 + dy**2)
-
-        # rotates the dx, dy into the local frame of the robot to minimize the error
-        local_frame = np.array(
-            [[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]]
-        )
-        local_dist_err = local_frame.T @ np.array([dx, dy])
-        local_dx, local_dy = (local_dist_err[0], local_dist_err[1])
-        err_ang = np.atan2(local_dy, local_dx)
-
-        # computes the approximated derivatives (not filtered)
-        dot_err_ang = (err_ang - self.prev_ang_err) / self.dt
-        dot_err_lin = (err_lin - self.prev_lin_err) / self.dt
-
-        # computes controller inputs
-        f = self.kp_lin * err_lin + self.kd_lin * dot_err_lin
-        torque = self.kp_ang * err_ang + self.kd_ang * dot_err_ang
-
-        # cache the error history
-        self.prev_lin_err = err_lin
-        self.prev_ang_err = err_ang
-
-        return f, torque
-
-class NeuralNetworkController(nn.Module):
-    def __init__(self, num_classes=53):
-        super(NeuralNetworkController, self).__init__()
-        # Where we define all the parts of the model
-        self.base_model = timm.create_model('efficientnet_b0', pretrained=True)
-        self.features = nn.Sequential(*list(self.base_model.children())[:-1])
-
-        enet_out_size = 1280
-        # Make a classifier
-        self.classifier = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(enet_out_size, num_classes)
-        )
-    
-    def forward(self, x):
-        # Connect these parts and return the output
-        x = self.features(x)
-        output = self.classifier(x)
-        return output
-
-    
-# class VehicleDataset(Dataset):
+    np.savez_compressed(filepath, data = data)
 
 
+#Variables
+dt = 0.01
+t_f = 5
 
-
-"""MAIN SCODE BEGINS HERE"""
-# initialize starting variables
-t_0, t_f, t, dt = 0, 20, 0, 0.01
-vehicle_mass, vehicle_radius = 1, 0.1
-control_points = [(0, 0), (1, 1), (2, 9), (10, 10)]
-x_max, y_max = 20.0, 20.0  # graph x and y axis max
-v_traj = 1
-
-applied_force, applied_torque = 0, 0
-applied_force_hist, applied_torque_hist = [], []
-# initial state
-initial_state = [0, 0, 1.7, 0, 0]  # should give in x,y,theta, vel, ang_vel
-(spline_x, spline_y), target_trajectory = generate_spline(
-    control_points,t_f,  dt=dt, spline_type="cubic")
-traj_xs, traj_ys = target_trajectory
-
-
-solver = Solver(vehicle_mass, vehicle_radius, dt, initial_state)
-controller = Controller(target_trajectory, kd_lin=0.5, kp_lin=0.5, kd_ang=0.5, kp_ang=1.0, dt=dt)
-
-# solver loop - track time for visualization
-times = []
-for i in range(len(target_trajectory)):
-    solver.solve(applied_force, 0, applied_torque)  # force, force_angle, torque
-    current_traj = [traj_xs[i], traj_ys[i]]
-    applied_force, applied_torque = controller.PD_control(current_traj, solver.state)
-
-    times.append(t)
-    applied_force_hist.append(applied_force)
-    applied_torque_hist.append(applied_torque)
-    t += dt
-
-
-
-
-# Create spline plot (returns fig, ax)
-pts = np.array(control_points)
-
-traj_times = np.arange(0, len(traj_xs) * dt, dt)[: len(traj_xs)]
-
-# Extract ODE trajectory points and times
-times_array = np.array(times, dtype=float)
-(x_hist, y_hist, theta_hist) = solver.history
-
-# Plot both trajectories with time visualization
-fig2, ax2 = plot_both_trajectories_with_time(
-    ideal_xs=traj_xs,
-    ideal_ys=traj_ys,
-    ideal_times=traj_times,
-    ode_xs=x_hist,
-    ode_ys=y_hist,
-    ode_times=times_array,
-    ode_colormap="rainbow",
+(sympy_f, sympy_gs, sympy_opt_vars) = dynamic_unicycle_optimal_traj_derivations()
+(cntrl_prob_cvxpy, prob_var_map, prob_param_map) = convert_sym_prob_to_cvxpy_prob(
+    sympy_f, sympy_gs, sympy_opt_vars
 )
-plt.show()
-
-target_traj_tuple = (traj_xs, traj_ys)
-vehicle_trajectory = (x_hist[2:], y_hist[2:], theta_hist[2:])
-controller_output = (applied_force_hist, applied_torque_hist)
-filepath = ""
-# save_data_to_file(filepath, target_traj_tuple, vehicle_trajectory, controller_output, dt)
 
 
-# plot the error history of the controller over time
-dist_err_hist = np.sqrt((traj_xs - x_hist[2:])**2 + (traj_ys - y_hist[2:])**2)
+def get_param_var(mapping, idxs):
+    params = []
+    for idx in idxs:
+        pair = mapping[idx]
+
+        print(f"\tSympy: {pair[0]}")
+        params.append(pair[1])
+    return tuple(params)
+
+# restores handles to optimization variables (cvxpy)
+print("Variables:")
+(u_f_var, u_t_var, delta_var) = get_param_var(prob_var_map, (0, 1, 2))
+
+
+# restores handles to parameters (cvxpy)
+print("Parameters:")
+p_par = get_param_var(prob_param_map, (0,))[0]
+(alpha_par, beta_par) = get_param_var(
+    prob_param_map, (1, 8)
+)
+(x_par, y_par, theta_par, v_par, omega_par) = get_param_var(
+    prob_param_map, (3, 6, 14, 10, 9)
+)
+
+(x_traj_par, y_traj_par, theta_traj_par) = get_param_var(
+    prob_param_map, (2, 5, 13, )
+)
+(
+    dot_x_traj_par,
+    dot_y_traj_par,
+    dot_theta_traj_par,
+) = get_param_var(prob_param_map, (11, 12, 15))
+
+# as cvxpy is a convex optimization library we must use these auxiliarly
+# variables as replacement for sin(theta) and cos(theta)
+# NOTE: given theta is a parameter set at each controller update step we can do
+# this without loss of convexity with respect to optimization variables u_f, u_t
+(sin_theta_aux_par, cos_theta_aux_par) = get_param_var(prob_param_map, (7, 4))
+
+# set the relative importance for each error
+
+alpha_par.value = 1.0  # distance loss
+beta_par.value = 1.0  # angle loss
+
+p_par.value = 0.2
+
+# gamma_par.value = 1e-3  # IGNORE: velocity loss
+# delta_par.value = 1e-3  # IGNORE: angular velocity loss
+
+traj, t  = generate_spline(t_f,
+     dt=dt, spline_type="cubic")
+
+traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta = traj
+
+p0 = np.array([0.0, 0.0, np.pi / 2, 0.0, 0.0])  # pointing upwards
+u0 = np.array([0.0, 0.0])
+
+
+print([param.value for param in cntrl_prob_cvxpy.parameters()])
+print(cntrl_prob_cvxpy.parameters()[0] is alpha_par)
+
+
+def dyn_unicycle_f(t, p, u):
+    x, y, theta, v, omega = p
+    u_f, u_t = u
+
+    dot_state = np.array([v * np.cos(theta), v * np.sin(theta), omega, u_f, u_t])
+    return dot_state
+
+
+p_hist = []
+u_hist = []
+
+p = p0
+u = u0
+
+for i in range(len(t)):
+    # generate controller input form the optimal controller
+
+    p_hist.append(p)
+    u_hist.append(u)
+
+    # gets the current state
+    x_curr, y_curr, theta_curr, v_curr, omega_curr = p
+
+    # gets the current trajectory state
+    traj_x_curr, traj_y_curr, traj_theta_curr = (traj_x[i], traj_y[i], traj_theta[i])
+    print(f"Traj x: {traj_x_curr}, traj y: {traj_y}")
+    dot_traj_x_curr, dot_traj_y_curr, dot_traj_theta_curr = (
+        dot_traj_x[i],
+        dot_traj_y[i],
+        dot_traj_theta[i],
+    )
+
+    # set parameters of the optimization problem
+
+    x_par.value = x_curr
+    y_par.value = y_curr
+    theta_par.value = theta_curr
+    v_par.value = v_curr
+    omega_par.value = omega_curr
+
+    x_traj_par.value = traj_x_curr
+    y_traj_par.value = traj_y_curr
+    theta_traj_par.value = traj_theta_curr
+    # v_traj_par.value = 0.0  # not generated and error gain disabled
+    # omega_traj_par.value = 0.0  # not generated and error gain disabled
+
+    dot_x_traj_par.value = dot_traj_x_curr
+    dot_y_traj_par.value = dot_traj_y_curr
+    dot_theta_traj_par.value = dot_traj_theta_curr
+    # dot_v_traj_par.value = 0.0  # not generated and error gain disabled
+    # dot_omega_traj_par.value = 0.0  # not generated and error gain disabled
+
+    print([param.value for param in cntrl_prob_cvxpy.parameters()])
+
+    # set the auxiliary variables
+    sin_theta_aux_par.value = np.sin(theta_curr)
+    cos_theta_aux_par.value = np.cos(theta_curr)
+
+    # run optimization
+
+    cntrl_prob_cvxpy.solve(warm_start=True)
+    print(cntrl_prob_cvxpy.constraints[0].value())
+
+    u_f_optim = u_f_var.value
+    u_t_optim = u_t_var.value
+    delta_optim = delta_var.value
+
+    print(f"u_f: {u_f_optim}, u_t: {u_t_optim}, delta: {delta_optim}")
+
+    u = np.array([u_f_optim, u_t_optim])
+
+    # update history
+
+    # run dynamics (zero order hold on dynamics for dt)
+    result = solve_ivp(lambda t, y: dyn_unicycle_f(t, y, u=u), [0, dt], p)
+    print(result.y)
+
+    p = result.y[:, -1]
+    # x_curr, y_curr, theta_curr, v_curr, omega_curr = p
+
+    if i > 1000:
+        break
+
+p_hist = np.array(p_hist)
+u_hist = np.array(u_hist)
 
 fig, ax = plt.subplots()
-ax.plot(traj_times, dist_err_hist)
+
+ax.plot(p_hist[:, 0], p_hist[:, 1])
+ax.plot(traj_x, traj_y)
 
 # plt.show()
+
+p
+
+
+filepath = ""
+# x_curr, y_curr, theta_curr, v_curr, omega_curr = p_hist
+traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta = traj
+traj = np.column_stack((traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta))
+
+# save_data_to_file(filepath,t ,traj, p_hist, u_hist, dt)
+
+
+# # plot the error history of the controller over time
+# dist_err_hist = np.sqrt((traj_xs - x_hist[2:])**2 + (traj_ys - y_hist[2:])**2)
+
+# fig, ax = plt.subplots()
+# ax.plot(traj_times, dist_err_hist)
+
+# # plt.show()
