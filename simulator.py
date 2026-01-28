@@ -11,103 +11,49 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.modules.module import Module
 from pathlib import Path
+from optimal_traj_control.automated_test.optimal_control import (
+    dynamic_unicycle_optimal_traj_derivations,
+    convert_sym_prob_to_cvxpy_prob,
+)
 
 
 
-
-def generate_spline(points, dt=0.01, spline_type="cubic", v=1.0):
-    """
-    Generate a parametric spline from 2D points and sample at constant velocity.
-
-    Parameters:
-    -----------
-    points : list[tuple[float, float]] | np.ndarray
-        Sequence of (x, y) points.
-    dt : float
-        Time step for sampling (default 0.01)
-    spline_type : str
-        'cubic' for CubicSpline or 'univariate' for UnivariateSpline
-    v : float
-        Constant velocity for arc length parameterization (default 1.0)
-
-    Returns:
-    --------
-    spline_x, spline_y : spline functions
-        Parametric splines x(t) and y(t) where t is parameter from 0 to 1
-    traj : np.ndarray
-        Array of (x, y, v) points spaced at constant velocity intervals
-        where v is the velocity at each point
-    """
-    pts = np.asarray(points, dtype=float)
-    if pts.ndim != 2 or pts.shape[1] != 2:
-        raise ValueError("points must be a sequence of (x, y) pairs")
-
-    n_points = len(pts)
-
-    # Create parameter t from 0 to 1
-    t_param = np.linspace(0, 1, n_points)
-
-    # Create parametric splines: x(t) and y(t)
-    if spline_type == "cubic":
-        spline_x = CubicSpline(t_param, pts[:, 0])
-        spline_y = CubicSpline(t_param, pts[:, 1])
-    elif spline_type == "univariate":
-        spline_x = UnivariateSpline(t_param, pts[:, 0], s=0)
-        spline_y = UnivariateSpline(t_param, pts[:, 1], s=0)
-    else:
-        raise ValueError("spline_type must be 'cubic' or 'univariate'")
-
-    # Calculate arc length function s(t) by integrating |r'(t)| dt
-    # First, get a fine sampling of the curve
-    t_fine = np.linspace(0, 1, 1000)
-    x_fine = spline_x(t_fine)
-    y_fine = spline_y(t_fine)
-
-    # Calculate derivatives
-    dx_dt = spline_x.derivative()(t_fine)
-    dy_dt = spline_y.derivative()(t_fine)
-
-    # Arc length element: ds = sqrt(dx^2 + dy^2) * dt
-    ds_dt = np.sqrt(dx_dt**2 + dy_dt**2)
-
-    # Cumulative arc length (integrate ds/dt)
-    dt_fine = t_fine[1] - t_fine[0]  # uniform spacing
-    arc_lengths = np.zeros_like(t_fine)
-    arc_lengths[1:] = np.cumsum(ds_dt[:-1]) * dt_fine
-    total_length = arc_lengths[-1]
-
-    # Create interpolation: t(s) where s is arc length
-    from scipy.interpolate import interp1d
-
-    t_of_s = interp1d(
-        arc_lengths, t_fine, kind="linear", bounds_error=False, fill_value=(0, 1)
+def generate_spline(points, t_f, dt=0.01, spline_type="cubic"):
+   
+    spline_method = CubicSpline  # for convenience
+    
+    t = np.linspace(0, t_f, int(t_f / dt))
+    points = np.array(
+        # defines a smoothed triangular path
+        [
+            # (x, y, t)
+            (0.0, 0.0, 0.0),
+            (5.0, 5.0, 15.0),
+            (10.0, 0.0, 20.0),
+        ]
     )
 
-    # Sample at constant velocity: s = v * t, where t is time
-    # Total time = total_length / v
-    total_time = total_length / v
-    time_points = np.arange(0, total_time + dt, dt)
+    (x_spline, y_spline) = (
+        spline_method(points[:, 2], points[:, 0]),
+        spline_method(points[:, 2], points[:, 1]),
+    )
+    (traj_x, traj_y, dot_traj_x, dot_traj_y) = (
+        x_spline(t),
+        y_spline(t),
+        x_spline.derivative()(t),
+        y_spline.derivative()(t),
+    )
 
-    # Convert time to arc length
-    arc_length_points = v * time_points
+    (traj_theta, dot_traj_theta) = (
+        np.atan2(traj_y, traj_x),
+        np.atan2(dot_traj_y, dot_traj_x),
+    )
+    traj = (traj_x, traj_y)
+    fig, ax = plt.subplots()
+    ax.plot(traj_x, traj_y)
 
-    # Clamp to valid range
-    arc_length_points = np.clip(arc_length_points, 0, total_length)
-
-    # Convert arc length to parameter t
-    t_points = t_of_s(arc_length_points)
-
-    # Evaluate splines at these parameter values
-    xs_targ = spline_x(t_points)
-    ys_targ = spline_y(t_points)
-
-    # Create velocity array (constant velocity v for all points)
-    vs_targ = np.full_like(xs_targ, v)
-
-    # Stack x, y, and velocity into trajectory array
-    traj = np.column_stack((xs_targ, ys_targ, vs_targ))
-
-    return (spline_x, spline_y), traj
+    plt.show()
+    return (x_spline, y_spline), traj
 
 
 def plot_both_trajectories_with_time(
@@ -371,7 +317,7 @@ class Controller:
         self, traj_target, state
     ):  # Targ = [x, y, vel] state = [x, y, theta]       , x_dot, y_dot, theta_dot]
 
-        x_traj, y_traj, _ = traj_target
+        x_traj, y_traj = traj_target
         x, y, theta = state
 
         # Position errors
@@ -429,7 +375,7 @@ class NeuralNetworkController(nn.Module):
 
 """MAIN SCODE BEGINS HERE"""
 # initialize starting variables
-t_0, t_f, t, dt = 0, 10, 0, 0.01
+t_0, t_f, t, dt = 0, 20, 0, 0.01
 vehicle_mass, vehicle_radius = 1, 0.1
 control_points = [(0, 0), (1, 1), (2, 9), (10, 10)]
 x_max, y_max = 20.0, 20.0  # graph x and y axis max
@@ -440,8 +386,9 @@ applied_force_hist, applied_torque_hist = [], []
 # initial state
 initial_state = [0, 0, 1.7, 0, 0]  # should give in x,y,theta, vel, ang_vel
 (spline_x, spline_y), target_trajectory = generate_spline(
-    control_points, dt=dt, spline_type="cubic", v=v_traj
-)
+    control_points,t_f,  dt=dt, spline_type="cubic")
+traj_xs, traj_ys = target_trajectory
+
 
 solver = Solver(vehicle_mass, vehicle_radius, dt, initial_state)
 controller = Controller(target_trajectory, kd_lin=0.5, kp_lin=0.5, kd_ang=0.5, kp_ang=1.0, dt=dt)
@@ -450,7 +397,7 @@ controller = Controller(target_trajectory, kd_lin=0.5, kp_lin=0.5, kd_ang=0.5, k
 times = []
 for i in range(len(target_trajectory)):
     solver.solve(applied_force, 0, applied_torque)  # force, force_angle, torque
-    current_traj = target_trajectory[i, :]
+    current_traj = [traj_xs[i], traj_ys[i]]
     applied_force, applied_torque = controller.PD_control(current_traj, solver.state)
 
     times.append(t)
@@ -464,8 +411,6 @@ for i in range(len(target_trajectory)):
 # Create spline plot (returns fig, ax)
 pts = np.array(control_points)
 
-traj_xs = target_trajectory[:, 0]
-traj_ys = target_trajectory[:, 1]
 traj_times = np.arange(0, len(traj_xs) * dt, dt)[: len(traj_xs)]
 
 # Extract ODE trajectory points and times
