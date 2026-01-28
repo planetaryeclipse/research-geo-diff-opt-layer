@@ -15,21 +15,22 @@ from optimal_traj_control.automated_test.optimal_control import (
     dynamic_unicycle_optimal_traj_derivations,
     convert_sym_prob_to_cvxpy_prob,
 )
-
+import random
 
 
 def generate_spline(t_f, points = None, dt=0.01, spline_type="cubic"):
     spline_method = CubicSpline  # for convenience
     t = np.linspace(0, t_f, int(t_f / dt))
-    points = np.array(
-        # defines a smoothed triangular path
-        [
-            # (x, y, t)
-            (0.0, 0.0, 0.0),
-            (5.0, 5.0, 15.0),
-            (10.0, 0.0, 20.0),
-        ]
-    )
+    if points is None:
+        points = np.array(
+            # defines a smoothed triangular path
+            [
+                # (x, y, t)
+                (0.0, 0.0, 0.0),
+                (5.0, 5.0, 15.0),
+                (10.0, 0.0, 20.0),
+            ]
+        )
 
     (x_spline, y_spline) = (
         spline_method(points[:, 2], points[:, 0]),
@@ -47,8 +48,8 @@ def generate_spline(t_f, points = None, dt=0.01, spline_type="cubic"):
         np.atan2(dot_traj_y, dot_traj_x),
     )
     traj = (traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta)
-    fig, ax = plt.subplots()
-    ax.plot(traj_x, traj_y)
+    # fig, ax = plt.subplots()
+    # ax.plot(traj_x, traj_y)
 
     # plt.show()
     print("traj_x" ,len(traj_x))
@@ -195,9 +196,10 @@ def save_data_to_file(filepath,t, target_trajectory, vehicle_trajectory, control
     data_dir = root / "data"
     data_dir.mkdir(exist_ok=True)
 
+
+    t = t.reshape(-1, 1)
     print(t.shape,target_trajectory.shape,vehicle_trajectory.shape, controller_output.shape  )
 
-    t = t.reshape(500, 1)
     data = np.concatenate([t, target_trajectory, vehicle_trajectory, controller_output], axis=1)
 
     k = 1
@@ -212,7 +214,30 @@ def save_data_to_file(filepath,t, target_trajectory, vehicle_trajectory, control
 
 #Variables
 dt = 0.01
-t_f = 5
+t_f = 20
+
+#create random points
+x_max = 20
+y_max = 20
+t1 = random.randint(1, 18)
+t2 = random.randint(t1, 19)
+x1 = random.randint(0, x_max)
+y1 = random.randint(0, y_max)
+x2 = random.randint(0, x_max)
+y2 = random.randint(0, y_max)
+x3 = random.randint(0, x_max)
+y3 = random.randint(0, y_max)
+
+points = np.array(
+    # defines a smoothed triangular path
+    [
+        # (x, y, t)
+        (0.0, 0.0, 0.0),
+        (x1, y1, t1),
+        (x2, y2, t2),
+        (x3, y3, t_f),
+    ]
+)
 
 (sympy_f, sympy_gs, sympy_opt_vars) = dynamic_unicycle_optimal_traj_derivations()
 (cntrl_prob_cvxpy, prob_var_map, prob_param_map) = convert_sym_prob_to_cvxpy_prob(
@@ -269,7 +294,7 @@ p_par.value = 0.2
 # gamma_par.value = 1e-3  # IGNORE: velocity loss
 # delta_par.value = 1e-3  # IGNORE: angular velocity loss
 
-traj, t  = generate_spline(t_f,
+traj, t  = generate_spline(t_f, points = points,
      dt=dt, spline_type="cubic")
 
 traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta = traj
@@ -362,7 +387,7 @@ for i in range(len(t)):
     p = result.y[:, -1]
     # x_curr, y_curr, theta_curr, v_curr, omega_curr = p
 
-    if i > 1000:
+    if i > 2000:
         break
 
 p_hist = np.array(p_hist)
@@ -373,7 +398,7 @@ fig, ax = plt.subplots()
 ax.plot(p_hist[:, 0], p_hist[:, 1])
 ax.plot(traj_x, traj_y)
 
-# plt.show()
+plt.show()
 
 p
 
@@ -383,7 +408,7 @@ filepath = ""
 traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta = traj
 traj = np.column_stack((traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta))
 
-# save_data_to_file(filepath,t ,traj, p_hist, u_hist, dt)
+save_data_to_file(filepath,t ,traj, p_hist, u_hist, dt)
 
 
 # # plot the error history of the controller over time
