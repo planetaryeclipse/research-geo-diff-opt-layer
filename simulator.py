@@ -323,6 +323,34 @@ class Solver:
     def state(self):
         return (self.xs[-1], self.ys[-1], self.thetas[-1])
 
+def save_data_to_file(filepath, target_trajectory, vehicle_trajectory, controller_output, dt): #saves target x, y | current state x y theta | controller output
+    filename = "data"
+
+    root = Path(__file__).resolve().parent
+    data_dir = root / "data"
+    data_dir.mkdir(exist_ok=True)
+
+    target_xs, target_ys = target_trajectory
+    vehicle_xs, vehicle_ys, vehicle_thetas = vehicle_trajectory
+    forces, torques = controller_output
+
+    #Make sure all arrays same length
+    lengths = list(map(len, [target_xs, target_ys, vehicle_xs, vehicle_ys, vehicle_thetas, forces, torques]))
+    if len(set(lengths)) != 1:
+        raise ValueError(f"Length mismatch across lists: {lengths}")
+
+    data = np.column_stack([target_xs, target_ys, vehicle_xs, vehicle_ys, vehicle_thetas, forces, torques]).astype(np.float64)
+
+    k = 1
+    while True:
+        filepath = data_dir / f"{filename}{k}.npz"
+        if not filepath.exists():
+            break
+        k += 1
+
+    meta = {"data": data}
+    meta["dt"] = np.array([dt], dtype=np.float32)
+    np.savez_compressed(filepath, **meta)
 
 class Controller:
     def __init__(self, traj, kd_lin=0, kp_lin=0, kd_ang=0, kp_ang=0, dt=0.01):
@@ -394,34 +422,8 @@ class NeuralNetworkController(nn.Module):
         return output
 
     
-def save_data_to_file(filepath, target_trajectory, vehicle_trajectory, controller_output, dt): #saves target x, y | current state x y theta | controller output
-    filename = "data"
+# class VehicleDataset(Dataset):
 
-    root = Path(__file__).resolve().parent
-    data_dir = root / "data"
-    data_dir.mkdir(exist_ok=True)
-
-    target_xs, target_ys = target_trajectory
-    vehicle_xs, vehicle_ys, vehicle_thetas = vehicle_trajectory
-    forces, torques = controller_output
-
-    #Make sure all arrays same length
-    lengths = list(map(len, [target_xs, target_ys, vehicle_xs, vehicle_ys, vehicle_thetas, forces, torques]))
-    if len(set(lengths)) != 1:
-        raise ValueError(f"Length mismatch across lists: {lengths}")
-
-    data = np.column_stack([target_xs, target_ys, vehicle_xs, vehicle_ys, vehicle_thetas, forces, torques]).astype(np.float64)
-
-    k = 1
-    while True:
-        filepath = data_dir / f"{filename}{k}.npz"
-        if not filepath.exists():
-            break
-        k += 1
-
-    meta = {"data": data}
-    meta["dt"] = np.array([dt], dtype=np.float32)
-    np.savez_compressed(filepath, **meta)
 
 
 
