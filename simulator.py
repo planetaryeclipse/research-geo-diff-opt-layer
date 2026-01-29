@@ -56,139 +56,6 @@ def generate_spline(t_f, points = None, dt=0.01, spline_type="cubic"):
     return traj, t
 
 
-
-    """
-    Plot both ideal and ODE trajectories on the same plot with time visualization.
-
-    Parameters:
-    -----------
-    ideal_xs : array-like
-        X positions of ideal trajectory
-    ideal_ys : array-like
-        Y positions of ideal trajectory
-    ideal_times : array-like
-        Time values for ideal trajectory
-    ode_xs : array-like
-        X positions of ODE trajectory (handles nested lists)
-    ode_ys : array-like
-        Y positions of ODE trajectory (handles nested lists)
-    ode_times : array-like
-        Time values for ODE trajectory
-    ax : matplotlib Axes, optional
-        Axes to plot on. If None, creates new figure.
-    figsize : tuple
-        Figure size (width, height)
-    ideal_colormap : str
-        Colormap for ideal trajectory (default: 'viridis')
-    ode_colormap : str
-        Colormap for ODE trajectory (default: 'viridis')
-    ideal_label : str
-        Label for ideal trajectory
-    ode_label : str
-        Label for ODE trajectory
-
-    Returns:
-    --------
-    fig : matplotlib figure
-        The figure object
-    ax : matplotlib axes
-        The axes object
-    """
-
-    def flatten_to_array(data):
-        """Convert nested lists/arrays to flat 1D array."""
-        result = []
-        for item in data:
-            if isinstance(item, (list, tuple, np.ndarray)):
-                if len(item) > 0:
-                    if isinstance(item[0], (list, tuple, np.ndarray)):
-                        result.append(float(item[0][0]) if len(item[0]) > 0 else 0.0)
-                    else:
-                        result.append(float(item[0]))
-                else:
-                    result.append(0.0)
-            else:
-                result.append(float(item))
-        return np.array(result, dtype=float)
-
-    # Flatten ODE trajectory arrays
-    ode_xs = flatten_to_array(ode_xs)
-    ode_ys = flatten_to_array(ode_ys)
-
-    # Convert to numpy arrays
-    ideal_xs = np.asarray(ideal_xs, dtype=float)
-    ideal_ys = np.asarray(ideal_ys, dtype=float)
-    ideal_times = np.asarray(ideal_times, dtype=float)
-    ode_times = np.asarray(ode_times, dtype=float)
-
-    # Ensure same length for ODE trajectory
-    min_len = min(len(ode_xs), len(ode_ys), len(ode_times))
-    ode_xs = ode_xs[:min_len]
-    ode_ys = ode_ys[:min_len]
-    ode_times = ode_times[:min_len]
-
-    # Find common time range for normalization
-    time_min = min(ideal_times.min(), ode_times.min())
-    time_max = max(ideal_times.max(), ode_times.max())
-    norm_combined = plt.Normalize(vmin=time_min, vmax=time_max)
-
-    # Create figure if needed
-    if ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
-    else:
-        fig = ax.figure
-
-    # Plot ideal trajectory with time coloring
-    from matplotlib.collections import LineCollection
-
-    points_ideal = np.array([ideal_xs, ideal_ys]).T.reshape(-1, 1, 2)
-    segments_ideal = np.concatenate([points_ideal[:-1], points_ideal[1:]], axis=1)
-    cmap_ideal = plt.get_cmap(ideal_colormap)
-    lc_ideal = LineCollection(
-        segments_ideal,
-        cmap=cmap_ideal,
-        norm=norm_combined,
-        linewidth=2.5,
-        alpha=0.7,
-        label=ideal_label,
-    )
-    lc_ideal.set_array(ideal_times)
-    ax.add_collection(lc_ideal)
-
-    # Plot ODE trajectory with time coloring
-    points_ode = np.array([ode_xs, ode_ys]).T.reshape(-1, 1, 2)
-    segments_ode = np.concatenate([points_ode[:-1], points_ode[1:]], axis=1)
-    cmap_ode = plt.get_cmap(ode_colormap)
-    lc_ode = LineCollection(
-        segments_ode,
-        cmap=cmap_ode,
-        norm=norm_combined,
-        linewidth=2,
-        alpha=0.8,
-        linestyle="--",
-        label=ode_label,
-    )
-    lc_ode.set_array(ode_times)
-    ax.add_collection(lc_ode)
-
-    # Add colorbar (using one of the collections for the scale)
-    cbar = plt.colorbar(lc_ideal, ax=ax)
-    cbar.set_label("Time", rotation=270, labelpad=15)
-
-    # Format axes
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
-    ax.set_aspect("equal", adjustable="box")
-    ax.set_xlim(-20, 20)
-    ax.set_ylim(-20, 20)
-    ax.grid(True, alpha=0.3)
-    ax.set_title("Ideal vs ODE Trajectory (colored by time)")
-    ax.legend()
-    plt.tight_layout()
-
-    return fig, ax
-
-
 def save_data_to_file(filepath,t, target_trajectory, vehicle_trajectory, controller_output, dt): #saves target x, y | current state x y theta | controller output
     filename = "data"
 
@@ -400,11 +267,11 @@ ax.plot(traj_x, traj_y)
 
 
 
-fig, ax = plt.subplots()
-ax.plot(u_hist[1])
-# ax.set_yscale('log')
 
 plt.show()
+
+print(u_hist[-1])
+
 
 filepath = ""
 # x_curr, y_curr, theta_curr, v_curr, omega_curr = p_hist
