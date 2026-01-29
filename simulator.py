@@ -201,7 +201,7 @@ def save_data_to_file(filepath,t, target_trajectory, vehicle_trajectory, control
     print(t.shape,target_trajectory.shape,vehicle_trajectory.shape, controller_output.shape  )
 
     data = np.concatenate([t, target_trajectory, vehicle_trajectory, controller_output], axis=1)
-
+    print(data.shape)
     k = 1
     while True:
         filepath = data_dir / f"{filename}{k}.npz"
@@ -214,7 +214,7 @@ def save_data_to_file(filepath,t, target_trajectory, vehicle_trajectory, control
 
 #Variables
 dt = 0.01
-t_f = 20
+t_f = 5
 
 #create random points
 x_max = 20
@@ -294,7 +294,7 @@ p_par.value = 0.2
 # gamma_par.value = 1e-3  # IGNORE: velocity loss
 # delta_par.value = 1e-3  # IGNORE: angular velocity loss
 
-traj, t  = generate_spline(t_f, points = points,
+traj, t  = generate_spline(t_f,
      dt=dt, spline_type="cubic")
 
 traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta = traj
@@ -398,23 +398,26 @@ fig, ax = plt.subplots()
 ax.plot(p_hist[:, 0], p_hist[:, 1])
 ax.plot(traj_x, traj_y)
 
+
+
+fig, ax = plt.subplots()
+ax.plot(u_hist[1])
+# ax.set_yscale('log')
+
 plt.show()
-
-p
-
 
 filepath = ""
 # x_curr, y_curr, theta_curr, v_curr, omega_curr = p_hist
 traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta = traj
 traj = np.column_stack((traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta))
 
-save_data_to_file(filepath,t ,traj, p_hist, u_hist, dt)
+# save_data_to_file(filepath,t ,traj, p_hist, u_hist, dt)
 
 
 # # plot the error history of the controller over time
 # dist_err_hist = np.sqrt((traj_xs - x_hist[2:])**2 + (traj_ys - y_hist[2:])**2)
 
-# fig, ax = plt.subplots()
+
 # ax.plot(traj_times, dist_err_hist)
 
 # # plt.show()
