@@ -1,36 +1,31 @@
-from tkinter import Y
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy as sp
-import scipy.integrate as integrate
+
 from scipy.integrate import solve_ivp
-from scipy.interpolate import CubicSpline, UnivariateSpline
-import torch
-from torch._numpy import float64
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
-from torch.nn.modules.module import Module
+from scipy.optimize import minimize
+from scipy.interpolate import CubicSpline
 from pathlib import Path
-from optimal_traj_control.automated_test.optimal_control import (
-    dynamic_unicycle_optimal_traj_derivations,
-    convert_sym_prob_to_cvxpy_prob,
-)
+
 import random
+from dataclasses import dataclass
 
 
-def generate_spline(t_f, points = None, dt=0.01, spline_type="cubic"):
+
+def generate_spline(t_final, points = None, dt=0.01, spline_type="cubic"):
     spline_method = CubicSpline  # for convenience
-    t = np.linspace(0, t_f, int(t_f / dt))
+    t = np.linspace(0, t_final, int(t_final / dt))
     if points is None:
-        points = np.array(
-            # defines a smoothed triangular path
-            [
-                # (x, y, t)
-                (0.0, 0.0, 0.0),
-                (5.0, 5.0, 15.0),
-                (10.0, 0.0, 20.0),
-            ]
-        )
+        points = np.array([(0.0, 0.0, 0.0), (5.0, 5.0, t_final / 2), (10.0, 0.0, t_final)])
+
+        # points = np.array(
+        #     # defines a smoothed triangular path
+        #     [
+        #         # (x, y, t)
+        #         (0.0, 0.0, 0.0),
+        #         (5.0, 5.0, 15.0),
+        #         (10.0, 0.0, 20.0),
+        #     ]
+        # )
 
     (x_spline, y_spline) = (
         spline_method(points[:, 2], points[:, 0]),
@@ -56,7 +51,7 @@ def generate_spline(t_f, points = None, dt=0.01, spline_type="cubic"):
     return traj, t
 
 
-def save_data_to_file(filepath,t, target_trajectory, vehicle_trajectory, controller_output, dt): #saves target x, y | current state x y theta | controller output
+def save_data_to_file(filepath, target_trajectory, vehicle_trajectory, controller_output, dt): #saves target x, y | current state x y theta | controller output
     filename = "data"
 
     root = Path(__file__).resolve().parent
@@ -64,10 +59,9 @@ def save_data_to_file(filepath,t, target_trajectory, vehicle_trajectory, control
     data_dir.mkdir(exist_ok=True)
 
 
-    t = t.reshape(-1, 1)
-    print(t.shape,target_trajectory.shape,vehicle_trajectory.shape, controller_output.shape  )
+    print(target_trajectory.shape,vehicle_trajectory.shape, controller_output.shape  )
 
-    data = np.concatenate([t, target_trajectory, vehicle_trajectory, controller_output], axis=1)
+    data = np.concatenate([ target_trajectory, vehicle_trajectory, controller_output], axis=1)
     print(data.shape)
     k = 1
     while True:
@@ -78,10 +72,80 @@ def save_data_to_file(filepath,t, target_trajectory, vehicle_trajectory, control
 
     np.savez_compressed(filepath, data = data)
 
+def _mpc_cost(t, y, u_steps, dt, params, model_step, state_cost):
+    # do not consider the current cost
+    num_steps = u_steps.shape[0]
+
+    total_cost = 0
+    y_upd = y
+
+    for i in range(num_steps):
+        u = u_steps[i, :]
+        t_upd = t + dt * i
+
+        y_upd = model_step(t_upd, dt, y_upd, u, params)
+        total_cost += state_cost(t_upd, y_upd, u, i, params)
+
+    return total_cost
+
+def gen_mpc_controls(
+    t, y, steps, dt, u_guess: np.ndarray, params, model_step, state_cost
+):
+    # must find inputs over finite time horizon that minimize the total cost
+
+    # repeats the guess then flattens to be able to use as variable for minimize
+    u_steps_guess = np.repeat(
+        u_guess.reshape((1, len(u_guess))), steps, axis=0
+    ).flatten()
+
+    result = minimize(
+        lambda u_steps: _mpc_cost(
+            t,
+            y,
+            u_steps.reshape((steps, len(u_guess))),  # each step as row
+            dt,
+            params,
+            model_step,
+            state_cost,
+        ),
+        u_steps_guess,
+    )
+
+    if not result.success:
+        print("Failed to fully converge at solution, is suboptimal")
+
+    result_u_steps = result.x.reshape((steps, len(u_guess)))
+    return (result_u_steps[0, :], result_u_steps)
+
+def dyn_ext_unicycle_cost(t, y, u, k, params):
+    x, y, theta, v, omega = y
+    x_traj, y_traj, theta_traj = params.traj_gen(t)
+
+    state_cost = (
+        0.5 * params.dist_cost * ((x_traj - x) ** 2 + (y_traj - y) ** 2)
+        + 0.5 * params.ang_cost * (theta - theta_traj) ** 2
+    )
+
+    input_cost = u.T @ params.u_cost @ u
+
+    return params.fut_pred_factor(k) * state_cost + input_cost
+
+def dyn_ext_unicycle_model_step(t, dt, y, u, params):
+    u_f, u_t = u
+
+    def model_f(t, y):
+        _, _, theta, v, omega = y
+        return np.array([v * np.cos(theta), v * np.sin(theta), omega, u_f, u_t])
+
+    result = solve_ivp(model_f, [0, dt], y)
+    return result.y[:, -1]
+
+
 
 #Variables
 dt = 0.01
-t_f = 5
+t_final = 40.0
+num_samples = int(t_final / dt)
 
 #create random points
 x_max = 20
@@ -102,160 +166,108 @@ points = np.array(
         (0.0, 0.0, 0.0),
         (x1, y1, t1),
         (x2, y2, t2),
-        (x3, y3, t_f),
+        (x3, y3, t_final),
     ]
 )
 
-(sympy_f, sympy_gs, sympy_opt_vars) = dynamic_unicycle_optimal_traj_derivations()
-(cntrl_prob_cvxpy, prob_var_map, prob_param_map) = convert_sym_prob_to_cvxpy_prob(
-    sympy_f, sympy_gs, sympy_opt_vars
+
+dt = 0.1
+
+num_samples = int(t_final / dt)
+
+spline_method = CubicSpline
+
+t = np.linspace(0, t_final, num_samples)
+path_points = np.array([(0.0, 0.0, 0.0), (5.0, 5.0, t_final / 2), (10.0, 0.0, t_final)])
+
+# generators for the spline
+x_spline, y_spline = (
+    spline_method(path_points[:, 2], path_points[:, 0]),
+    spline_method(path_points[:, 2], path_points[:, 1]),
 )
 
-
-def get_param_var(mapping, idxs):
-    params = []
-    for idx in idxs:
-        pair = mapping[idx]
-
-        print(f"\tSympy: {pair[0]}")
-        params.append(pair[1])
-    return tuple(params)
-
-# restores handles to optimization variables (cvxpy)
-print("Variables:")
-(u_f_var, u_t_var, delta_var) = get_param_var(prob_var_map, (0, 1, 2))
-
-
-# restores handles to parameters (cvxpy)
-print("Parameters:")
-p_par = get_param_var(prob_param_map, (0,))[0]
-(alpha_par, beta_par) = get_param_var(
-    prob_param_map, (1, 8)
+# computes the array indices
+x_traj, y_traj = (
+    x_spline(t),
+    y_spline(t),
 )
-(x_par, y_par, theta_par, v_par, omega_par) = get_param_var(
-    prob_param_map, (3, 6, 14, 10, 9)
+theta_traj = np.atan2(y_traj, x_traj)
+
+
+# generates a lookup handle
+def traj(t):
+    closest_idx = int(round(t / dt))
+    return (x_traj[closest_idx], y_traj[closest_idx], theta_traj[closest_idx])
+
+
+@dataclass
+class DynExtUnicycleMCPParams:
+    dist_cost = 5.0
+    ang_cost = 1.0
+    u_cost = 0.5 * np.identity(2)
+    traj_gen = traj
+    fut_pred_factor = lambda k: 1.0 * k if k > 0 else 1.0
+
+
+
+p0 = np.array([0.0, 0.0, np.pi / 2, 0.0, 0.0])  # pointing straight up
+
+u_mpc = gen_mpc_controls(
+    0.0,
+    p0,
+    10,
+    dt,
+    np.zeros((2,)),
+    DynExtUnicycleMCPParams,
+    dyn_ext_unicycle_model_step,
+    dyn_ext_unicycle_cost,
 )
 
-(x_traj_par, y_traj_par, theta_traj_par) = get_param_var(
-    prob_param_map, (2, 5, 13, )
-)
-(
-    dot_x_traj_par,
-    dot_y_traj_par,
-    dot_theta_traj_par,
-) = get_param_var(prob_param_map, (11, 12, 15))
+# implement the control loop
 
-# as cvxpy is a convex optimization library we must use these auxiliarly
-# variables as replacement for sin(theta) and cos(theta)
-# NOTE: given theta is a parameter set at each controller update step we can do
-# this without loss of convexity with respect to optimization variables u_f, u_t
-(sin_theta_aux_par, cos_theta_aux_par) = get_param_var(prob_param_map, (7, 4))
-
-# set the relative importance for each error
-
-alpha_par.value = 1.0  # distance loss
-beta_par.value = 1.0  # angle loss
-
-p_par.value = 0.2
-
-# gamma_par.value = 1e-3  # IGNORE: velocity loss
-# delta_par.value = 1e-3  # IGNORE: angular velocity loss
-
-traj, t  = generate_spline(t_f,
-     dt=dt, spline_type="cubic")
-
-traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta = traj
-
-p0 = np.array([0.0, 0.0, np.pi / 2, 0.0, 0.0])  # pointing upwards
+p0 = np.array([0.0, 0.0, np.pi / 2, 0.0, 0.0])  # pointing straight up
 u0 = np.array([0.0, 0.0])
-
-
-print([param.value for param in cntrl_prob_cvxpy.parameters()])
-print(cntrl_prob_cvxpy.parameters()[0] is alpha_par)
-
-
-def dyn_unicycle_f(t, p, u):
-    x, y, theta, v, omega = p
-    u_f, u_t = u
-
-    dot_state = np.array([v * np.cos(theta), v * np.sin(theta), omega, u_f, u_t])
-    return dot_state
-
 
 p_hist = []
 u_hist = []
 
-p = p0
-u = u0
+p_curr = p0
+u_curr = u0
 
-for i in range(len(t)):
-    # generate controller input form the optimal controller
+num_mpc_steps = 10
 
-    p_hist.append(p)
-    u_hist.append(u)
+for i in range(num_samples):
+    t_curr = t[i]
 
-    # gets the current state
-    x_curr, y_curr, theta_curr, v_curr, omega_curr = p
-
-    # gets the current trajectory state
-    traj_x_curr, traj_y_curr, traj_theta_curr = (traj_x[i], traj_y[i], traj_theta[i])
-    print(f"Traj x: {traj_x_curr}, traj y: {traj_y}")
-    dot_traj_x_curr, dot_traj_y_curr, dot_traj_theta_curr = (
-        dot_traj_x[i],
-        dot_traj_y[i],
-        dot_traj_theta[i],
+    # generate the next control action
+    u_optimal, _ = gen_mpc_controls(
+        t_curr,
+        p_curr,
+        num_mpc_steps,
+        0.25,  # use smaller steps
+        u_curr,  # uses the previous controls as a guess for the next one
+        DynExtUnicycleMCPParams,
+        dyn_ext_unicycle_model_step,
+        dyn_ext_unicycle_cost,
     )
 
-    # set parameters of the optimization problem
+    # update the histories with the current state and control input before
+    # advancing to the next time step
+    p_hist.append(p_curr)
+    u_hist.append(u_optimal)
 
-    x_par.value = x_curr
-    y_par.value = y_curr
-    theta_par.value = theta_curr
-    v_par.value = v_curr
-    omega_par.value = omega_curr
+    print(f"t: {t_curr}, state: {p_curr}, u_optimal: {u_optimal}")
 
-    x_traj_par.value = traj_x_curr
-    y_traj_par.value = traj_y_curr
-    theta_traj_par.value = traj_theta_curr
-    # v_traj_par.value = 0.0  # not generated and error gain disabled
-    # omega_traj_par.value = 0.0  # not generated and error gain disabled
+    # update the model with the optimal control
+    p_curr = dyn_ext_unicycle_model_step(
+        t_curr, dt, p_curr, u_optimal, DynExtUnicycleMCPParams
+    )
 
-    dot_x_traj_par.value = dot_traj_x_curr
-    dot_y_traj_par.value = dot_traj_y_curr
-    dot_theta_traj_par.value = dot_traj_theta_curr
-    # dot_v_traj_par.value = 0.0  # not generated and error gain disabled
-    # dot_omega_traj_par.value = 0.0  # not generated and error gain disabled
-
-    print([param.value for param in cntrl_prob_cvxpy.parameters()])
-
-    # set the auxiliary variables
-    sin_theta_aux_par.value = np.sin(theta_curr)
-    cos_theta_aux_par.value = np.cos(theta_curr)
-
-    # run optimization
-
-    cntrl_prob_cvxpy.solve(warm_start=True)
-    print(cntrl_prob_cvxpy.constraints[0].value())
-
-    u_f_optim = u_f_var.value
-    u_t_optim = u_t_var.value
-    delta_optim = delta_var.value
-
-    print(f"u_f: {u_f_optim}, u_t: {u_t_optim}, delta: {delta_optim}")
-
-    u = np.array([u_f_optim, u_t_optim])
-
-    # update history
-
-    # run dynamics (zero order hold on dynamics for dt)
-    result = solve_ivp(lambda t, y: dyn_unicycle_f(t, y, u=u), [0, dt], p)
-    print(result.y)
-
-    p = result.y[:, -1]
-    # x_curr, y_curr, theta_curr, v_curr, omega_curr = p
-
-    if i > 2000:
+    if i > 300:
         break
+
+
+
 
 p_hist = np.array(p_hist)
 u_hist = np.array(u_hist)
@@ -263,7 +275,7 @@ u_hist = np.array(u_hist)
 fig, ax = plt.subplots()
 
 ax.plot(p_hist[:, 0], p_hist[:, 1])
-ax.plot(traj_x, traj_y)
+ax.plot(x_traj, y_traj)
 
 
 
@@ -278,7 +290,7 @@ filepath = ""
 traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta = traj
 traj = np.column_stack((traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta))
 
-# save_data_to_file(filepath,t ,traj, p_hist, u_hist, dt)
+save_data_to_file(filepath,traj, p_hist, u_hist, dt)
 
 
 # # plot the error history of the controller over time

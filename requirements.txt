@@ -6,3 +6,4 @@ sympy
 cvxpy
 ipykernel
 sortedcontainers
+torch
