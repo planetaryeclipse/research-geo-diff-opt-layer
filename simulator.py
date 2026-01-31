@@ -58,8 +58,10 @@ def save_data_to_file(filepath, target_trajectory, vehicle_trajectory, controlle
     data_dir = root / "data"
     data_dir.mkdir(exist_ok=True)
 
-
+    target_trajectory = target_trajectory[:len(vehicle_trajectory), :]
     print(target_trajectory.shape,vehicle_trajectory.shape, controller_output.shape  )
+
+    #Shorten target trajectory isf vehicle trajectory short
 
     data = np.concatenate([ target_trajectory, vehicle_trajectory, controller_output], axis=1)
     print(data.shape)
@@ -144,31 +146,38 @@ def dyn_ext_unicycle_model_step(t, dt, y, u, params):
 
 #Variables
 dt = 0.01
-t_final = 40.0
+t_final = 50.0
 num_samples = int(t_final / dt)
 
 #create random points
+x_initial_max = 5
+y_initial_max = 5
+initial_vel_variance = 2
+initial_dot_theta_variance = 2
+initial_force_variance = 2
+initial_torque_variance = 2
+
 x_max = 20
 y_max = 20
-t1 = random.randint(1, 18)
-t2 = random.randint(t1, 19)
-x1 = random.randint(0, x_max)
+t1 = random.randint(1, 7)
+t2 = random.randint(8, 15)
+x0 = random.randint(-x_initial_max, x_initial_max)
+y0 = random.randint(-y_initial_max, y_initial_max)
+x1 = random.randint(0, x_max-1)
 y1 = random.randint(0, y_max)
 x2 = random.randint(0, x_max)
 y2 = random.randint(0, y_max)
 x3 = random.randint(0, x_max)
 y3 = random.randint(0, y_max)
+theta0 = np.random.uniform(0, 2*np.pi)
+vel0 = np.random.uniform(-initial_vel_variance, initial_vel_variance)
+dot_theta0 = np.random.uniform(-initial_torque_variance, initial_torque_variance)
+force0 = np.random.uniform(-initial_dot_theta_variance, initial_dot_theta_variance)
+torque0 = np.random.uniform(-initial_torque_variance, initial_torque_variance)
 
-points = np.array(
-    # defines a smoothed triangular path
-    [
-        # (x, y, t)
-        (0.0, 0.0, 0.0),
-        (x1, y1, t1),
-        (x2, y2, t2),
-        (x3, y3, t_final),
-    ]
-)
+p0 = np.array([x0, y0, theta0, vel0, dot_theta0])  # pointing straight up
+u0 = np.array([force0, torque0])
+
 
 
 dt = 0.1
@@ -178,7 +187,9 @@ num_samples = int(t_final / dt)
 spline_method = CubicSpline
 
 t = np.linspace(0, t_final, num_samples)
-path_points = np.array([(0.0, 0.0, 0.0), (5.0, 5.0, t_final / 2), (10.0, 0.0, t_final)])
+path_points = np.array([(0.0, 0.0, 0.0), (x1, y1, t1),(x2, y2, t2), (x3, y3, t_final)])
+
+
 
 # generators for the spline
 x_spline, y_spline = (
@@ -187,12 +198,16 @@ x_spline, y_spline = (
 )
 
 # computes the array indices
-x_traj, y_traj = (
+x_traj, y_traj, x_dot_traj, y_dot_traj = (
     x_spline(t),
     y_spline(t),
+    x_spline.derivative()(t),
+    y_spline.derivative()(t),
 )
-theta_traj = np.atan2(y_traj, x_traj)
-
+(theta_traj, dot_theta_traj) = (
+    np.atan2(x_traj, y_traj),
+    np.atan2(x_dot_traj, y_dot_traj),
+)
 
 # generates a lookup handle
 def traj(t):
@@ -202,15 +217,14 @@ def traj(t):
 
 @dataclass
 class DynExtUnicycleMCPParams:
-    dist_cost = 5.0
-    ang_cost = 1.0
+    dist_cost = 3.0
+    ang_cost = 1.5
     u_cost = 0.5 * np.identity(2)
     traj_gen = traj
     fut_pred_factor = lambda k: 1.0 * k if k > 0 else 1.0
 
 
 
-p0 = np.array([0.0, 0.0, np.pi / 2, 0.0, 0.0])  # pointing straight up
 
 u_mpc = gen_mpc_controls(
     0.0,
@@ -225,8 +239,7 @@ u_mpc = gen_mpc_controls(
 
 # implement the control loop
 
-p0 = np.array([0.0, 0.0, np.pi / 2, 0.0, 0.0])  # pointing straight up
-u0 = np.array([0.0, 0.0])
+# p0 = np.array([0.0, 0.0, np.pi / 2, 0.0, 0.0])  # pointing straight up
 
 p_hist = []
 u_hist = []
@@ -234,7 +247,7 @@ u_hist = []
 p_curr = p0
 u_curr = u0
 
-num_mpc_steps = 10
+num_mpc_steps = 5
 
 for i in range(num_samples):
     t_curr = t[i]
@@ -263,7 +276,7 @@ for i in range(num_samples):
         t_curr, dt, p_curr, u_optimal, DynExtUnicycleMCPParams
     )
 
-    if i > 300:
+    if i > 150:
         break
 
 
@@ -287,9 +300,9 @@ print(u_hist[-1])
 
 filepath = ""
 # x_curr, y_curr, theta_curr, v_curr, omega_curr = p_hist
-traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta = traj
-traj = np.column_stack((traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta))
-
+# traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta = traj
+traj = np.column_stack((x_traj, y_traj, theta_traj, x_dot_traj, y_dot_traj, dot_theta_traj))
+print("traj shape",traj.shape)
 save_data_to_file(filepath,traj, p_hist, u_hist, dt)
 
 
