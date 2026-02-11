@@ -34,8 +34,8 @@ def dist_squared_map(p, q, cfg: MfldCfg):
 
 @dataclass
 class SolverCfg:
-    conv_eps = 1e-6
-    damp = 0.2
+    conv_eps = 1e-3
+    damp = 0.4
     damp_growth = 0.95  # decays (helps with eventual convergence)
     max_iters = 1000
 
@@ -62,7 +62,7 @@ def riem_grad_descent(
 
         p -= solv_cfg.damp * grad_f
 
-        # print(f"subsolver p: {p}")
+        print(f"subsolver p: {p}")
 
         if (
             p_prev is not None
@@ -158,7 +158,7 @@ def ralm(f, gs, hs, p0, mfld_cfg: MfldCfg, solve_cfg: ConstrainedSolverCfg, *arg
     h_mults = torch.zeros((m,))
 
     for i in range(solve_cfg.max_iters):
-        # print(f"i: {i}")
+        print(f"i: {i}")
 
         # finds the point that minimizes the augmented lagrangian function with
         # with the current lagrangian multipliers

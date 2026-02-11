@@ -54,7 +54,11 @@ class MetricField:
         # allow defining a custom number of dimensions if there is a mismatch
         # between the function and the true dimension
         self.n = n if n is not None else len(inspect.getfullargspec(fn).args)
-        self.fn = fn
+
+        # NOTE: compiling the equation yields a longer first call but is very
+        # fast in all subsequent calls through the optimization process so this
+        # is a potential strategy
+        self.fn = fn  # torch.compile(fn)
 
     def christoffels(self) -> Connection:
         # a function for the metric is needed here as the function is then
@@ -64,7 +68,10 @@ class MetricField:
         g_inv_mat_fn = lambda p: torch.inverse(g_mat_fn(p))
 
         return LeviCivitaConnection(
-            self.n, lambda p: _eval_christoffels(self.n, g_mat_fn, g_inv_mat_fn, p)
+            self.n,
+            # torch.compile(
+            lambda p: _eval_christoffels(self.n, g_mat_fn, g_inv_mat_fn, p),
+            # ),
         )
 
     def __call__(self, p):
