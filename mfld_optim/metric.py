@@ -54,18 +54,27 @@ class MetricField:
         # allow defining a custom number of dimensions if there is a mismatch
         # between the function and the true dimension
         self.n = n if n is not None else len(inspect.getfullargspec(fn).args)
-        self.fn = fn
+        self.fn = torch.compile(fn)
+
+        # print(self.fn(torch.ones(self.n)))  # warm start
 
     def christoffels(self) -> Connection:
         # a function for the metric is needed here as the function is then
         # differentiated to take the jacobian when evaluating the various
         # christoffel symbols as part of the levi-civita connection
-        g_mat_fn = lambda p: self.fn(*_coords(p))
-        g_inv_mat_fn = lambda p: torch.inverse(g_mat_fn(p))
 
-        return LeviCivitaConnection(
-            self.n, lambda p: _eval_christoffels(self.n, g_mat_fn, g_inv_mat_fn, p)
+        # this reduces execution time by ~10x
+        _eval_christoffels_opt = torch.compile(
+            lambda p: _eval_christoffels(
+                self.n,
+                lambda p: self.fn(*_coords(p)),
+                lambda p: torch.inverse(self.fn(*_coords(p))),
+                p,
+            ),
         )
+        # print(_eval_christoffels_opt(torch.ones(self.n)))  # warm start
+
+        return LeviCivitaConnection(self.n, _eval_christoffels_opt)
 
     def __call__(self, p):
         metric = Metric(self, self.fn(*_coords(p)))

@@ -35,7 +35,7 @@ def dist_squared_map(p, q, cfg: MfldCfg):
 @dataclass
 class SolverCfg:
     conv_eps = 1e-6
-    damp = 0.2
+    damp = 0.8
     damp_growth = 0.95  # decays (helps with eventual convergence)
     max_iters = 1000
 
@@ -60,9 +60,7 @@ def riem_grad_descent(
         df = jacobian(lambda p: f(p, mfld_cfg, *args), p, create_graph=True)
         grad_f = mfld_cfg.metric_field(p).sharp(df)
 
-        p -= solv_cfg.damp * grad_f
-
-        # print(f"subsolver p: {p}")
+        p = mfld_cfg.exp_method(p, -solv_cfg.damp * grad_f, mfld_cfg.conn)
 
         if (
             p_prev is not None
@@ -278,39 +276,42 @@ def test_riem_grad_descent():
 
 
 def test_ralm():
-    # NOTE: from testing it seems that generally we want the penalty growth
-    # to be larger than the decay rate of the subsolver (seems to sometimes
-    # get stuck at a position that violates constraints if we decay too quickly)
+    with torch.profiler.profile() as prof:
+        # NOTE: from testing it seems that generally we want the penalty growth
+        # to be larger than the decay rate of the subsolver (seems to sometimes
+        # get stuck at a position that violates constraints if we decay too quickly)
 
-    p = torch.tensor([-2.0, 0.0])
-    q = torch.tensor([0.0, 0.0])  # want to approach this point
+        p = torch.tensor([-2.0, 0.0])
+        q = torch.tensor([0.0, 0.0])  # want to approach this point
 
-    c = torch.tensor([2.0, 0.0])  # circle centerd on opposite side of p
-    rad = 1.0
+        c = torch.tensor([2.0, 0.0])  # circle centerd on opposite side of p
+        rad = 1.0
 
-    def f(p, cfg: MfldCfg, q, c, rad):
-        return 0.5 * dist_squared_map(p, q, cfg)
+        def f(p, cfg: MfldCfg, q, c, rad):
+            return 0.5 * dist_squared_map(p, q, cfg)
 
-    def g(p, cfg: MfldCfg, q, c, rad):
-        # all g must be defined such that g(p) <= 0
-        return dist_squared_map(p, c, cfg) - rad**2
+        def g(p, cfg: MfldCfg, q, c, rad):
+            # all g must be defined such that g(p) <= 0
+            return dist_squared_map(p, c, cfg) - rad**2
 
-    metric_field = RnMetricField(2)
-    mfld_cfg = MfldCfg(metric_field, metric_field.christoffels())
+        metric_field = RnMetricField(2)
+        mfld_cfg = MfldCfg(metric_field, metric_field.christoffels())
 
-    constr_solv_cfg = ConstrainedSolverCfg(
-        SubsolverMethod.RIEM_GRAD_DESCENT, SolverCfg()
-    )
+        constr_solv_cfg = ConstrainedSolverCfg(
+            SubsolverMethod.RIEM_GRAD_DESCENT, SolverCfg()
+        )
 
-    # TODO: improve this optimization time (likely recomputing values so can
-    # likely implement caching somewhere in the architecture)
+        # TODO: improve this optimization time (likely recomputing values so can
+        # likely implement caching somewhere in the architecture)
 
-    start_time = time()
-    result = ralm(f, [g], [], p, mfld_cfg, constr_solv_cfg, q, c, rad)
-    end_time = time()
+        start_time = time()
+        result = ralm(f, [g], [], p, mfld_cfg, constr_solv_cfg, q, c, rad)
+        end_time = time()
 
-    print(f"ralm result: {result}")
-    print(f"time: {end_time - start_time}")
+        print(f"ralm result: {result}")
+        print(f"time: {end_time - start_time}")
+
+    prof.export_chrome_trace("trace.json")
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@ from approx_geod_so import _exp_map_so_approx, _log_map_so_approx
 from metric import MetricField, LeviCivitaConnection
 from connection import Connection
 
+from time import time
+
 
 def _exp_map_fo_approx(p, v, conn):
     return p + v  # Euclidean
@@ -76,7 +78,10 @@ class DistSquaredMap(Function):
 
         g = metric(p)  # metric at point p
 
+        start_time = time()
         v = log_method(p, q, conn)  # tangent space at p
+        end_time = time()
+        print(f"time: {end_time - start_time}")
         dist_sqr = g(v, v) ** 2
 
         dv = g.flat(v)  # cotangent space at p (differential)
