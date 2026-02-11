@@ -60,9 +60,10 @@ class DistSquaredMap(Function):
     # easily define the cost/constraint functions for an optimization problem
     # NOTE: do not use this as part of a training pipeline
 
+    generate_vmap_rule = True
+
     @staticmethod
     def forward(
-        ctx,
         p,
         q,
         metric: MetricField,
@@ -79,11 +80,21 @@ class DistSquaredMap(Function):
         v = log_method(p, q, conn)  # tangent space at p
         dist_sqr = g(v, v) ** 2
 
+        return dist_sqr
+
+    @staticmethod
+    def setup_context(ctx, inputs, output):
+        (p, q, metric, conn, log_method) = inputs
+
+        if conn is None:
+            conn = metric.christoffels()
+
+        g = metric(p)
+        v = log_method(p, q, conn)  # tangent space at p
+
         dv = g.flat(v)  # cotangent space at p (differential)
         diff_dist_sqr = -2 * dv
         ctx.save_for_backward(diff_dist_sqr)
-
-        return dist_sqr
 
     @staticmethod
     def backward(ctx, grad_output):

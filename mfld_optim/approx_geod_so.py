@@ -57,22 +57,23 @@ def _initial_geod_vel_fprime_so(v, p, q, conn_coeffs, t, t0) -> np.ndarray:
 
 def _solve_initial_geod_vel_so(
     p, q, t0: float, t: float, conn: Connection
-) -> np.ndarray:
+) -> torch.tensor:
     # solves for the initial velocity along the geodesic using the second order
     # approximation of the geodesic (requires a tangent bundle connection)
 
     if conn.n != conn.r:
         raise ValueError("tangent bundle is a n-dim vector bundle")
 
-    conn_coeffs: np.ndarray = conn(p)
-    v_guess = (q - p) / (t - t0)  # Euclidean is the guess
+    with torch.no_grad():
+        conn_coeffs: np.ndarray = conn(p)
+        v_guess = (q - p) / (t - t0)  # Euclidean is the guess
 
-    result = root(
-        _initial_geod_vel_f_so,
-        v_guess,
-        args=(p, q, conn_coeffs, t, t0),
-        jac=_initial_geod_vel_fprime_so,
-    )
+        result = root(
+            _initial_geod_vel_f_so,
+            v_guess,
+            args=(p, q, conn_coeffs, t, t0),
+            jac=_initial_geod_vel_fprime_so,
+        )
 
     if result.success:
         # keep everything as a torch tensor of float32 to prevent shenanigans

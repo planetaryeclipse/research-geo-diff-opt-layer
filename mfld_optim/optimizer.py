@@ -5,6 +5,7 @@ from enum import Enum
 
 import torch
 from torch.autograd.functional import jacobian
+from torch.func import jacrev, jacfwd, grad
 
 from geodesic_funcs import ExpMethod, LogMethod, DistSquaredMap, dist_map
 from metric import MetricField, Metric, MetricView, RnMetricField
@@ -54,20 +55,31 @@ def riem_grad_descent(
     # available subsolvers to be used by ralm)
 
     p_prev = None
-    p = p0
+    p: torch.tensor = p0
 
     for i in range(solv_cfg.max_iters):
-        df = jacobian(lambda p: f(p, mfld_cfg, *args), p, create_graph=True)
-        grad_f = mfld_cfg.metric_field(p).sharp(df)
+        # the jacobian takes too long so we abuse backward propagation here
+        p.requires_grad = True
+        p.grad = None
 
+        f(p, mfld_cfg, *args).backward()
+        df = p.grad.detach()
+
+        p.requires_grad = False
+
+        grad_f = mfld_cfg.metric_field(p).sharp(df)
         p -= solv_cfg.damp * grad_f
 
-        print(f"subsolver p: {p}")
+        # print(f"subsolver p: {p}")
 
         if (
             p_prev is not None
             and dist_map(
-                p, p_prev, mfld_cfg.metric_field, mfld_cfg.conn, mfld_cfg.dist_method
+                p,
+                p_prev,
+                mfld_cfg.metric_field,
+                mfld_cfg.conn,
+                mfld_cfg.dist_method,
             )
             <= solv_cfg.conv_eps
         ):
@@ -158,7 +170,7 @@ def ralm(f, gs, hs, p0, mfld_cfg: MfldCfg, solve_cfg: ConstrainedSolverCfg, *arg
     h_mults = torch.zeros((m,))
 
     for i in range(solve_cfg.max_iters):
-        print(f"i: {i}")
+        # print(f"i: {i}")
 
         # finds the point that minimizes the augmented lagrangian function with
         # with the current lagrangian multipliers
@@ -195,7 +207,11 @@ def ralm(f, gs, hs, p0, mfld_cfg: MfldCfg, solve_cfg: ConstrainedSolverCfg, *arg
         if (
             p_prev is not None
             and dist_map(
-                p, p_prev, mfld_cfg.metric_field, mfld_cfg.conn, mfld_cfg.dist_method
+                p,
+                p_prev,
+                mfld_cfg.metric_field,
+                mfld_cfg.conn,
+                mfld_cfg.dist_method,
             )
             <= solve_cfg.conv_eps
             and not constr_violated
@@ -227,7 +243,9 @@ def ralm(f, gs, hs, p0, mfld_cfg: MfldCfg, solve_cfg: ConstrainedSolverCfg, *arg
                 else solve_cfg.g_mult_clips[j]
             )
             g_mults[j] = torch.clip(
-                g_mults[j] + solve_cfg.penalty * gs_eval[j], gj_min_clip, gj_max_clip
+                g_mults[j] + solve_cfg.penalty * gs_eval[j],
+                gj_min_clip,
+                gj_max_clip,
             )
         for j in range(m):
             hj_min_clip, hj_max_clip = (
@@ -236,7 +254,9 @@ def ralm(f, gs, hs, p0, mfld_cfg: MfldCfg, solve_cfg: ConstrainedSolverCfg, *arg
                 else solve_cfg.h_mult_clips[j]
             )
             h_mults[j] = torch.clip(
-                h_mults[j] + solve_cfg.penalty * hs_eval[j], hj_min_clip, hj_max_clip
+                h_mults[j] + solve_cfg.penalty * hs_eval[j],
+                hj_min_clip,
+                hj_max_clip,
             )
 
         p_prev = p
@@ -296,7 +316,13 @@ def test_ralm():
         return dist_squared_map(p, c, cfg) - rad**2
 
     metric_field = RnMetricField(2)
-    mfld_cfg = MfldCfg(metric_field, metric_field.christoffels())
+    conn = metric_field.christoffels()
+
+    # warm start the functions
+    # print(metric_field(p))
+    # print(conn(p))
+
+    mfld_cfg = MfldCfg(metric_field, conn)
 
     constr_solv_cfg = ConstrainedSolverCfg(
         SubsolverMethod.RIEM_GRAD_DESCENT, SolverCfg()

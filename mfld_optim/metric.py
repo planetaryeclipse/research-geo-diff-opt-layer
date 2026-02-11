@@ -7,7 +7,7 @@ from connection import Connection
 import inspect
 import itertools
 
-from torch.func import jacfwd
+from torch.func import jacfwd, jacrev
 from torch.autograd.functional import jacobian
 
 
@@ -29,7 +29,7 @@ def _eval_christoffels(n, g_fn, g_inv_fn, p) -> torch.tensor:
     conn_coeffs = torch.zeros((n, n, n))
     g_inv = g_inv_fn(p)
 
-    metric_partials = jacfwd(g_fn)(p)
+    metric_partials = jacrev(g_fn)(p)
     for k, i, j in itertools.product(range(n), range(n), range(n)):
         coeff = 0.0
         for m in range(n):
@@ -58,7 +58,7 @@ class MetricField:
         # NOTE: compiling the equation yields a longer first call but is very
         # fast in all subsequent calls through the optimization process so this
         # is a potential strategy
-        self.fn = fn  # torch.compile(fn)
+        self.fn = torch.compile(fn)
 
     def christoffels(self) -> Connection:
         # a function for the metric is needed here as the function is then
@@ -69,18 +69,14 @@ class MetricField:
 
         return LeviCivitaConnection(
             self.n,
-            # torch.compile(
-            lambda p: _eval_christoffels(self.n, g_mat_fn, g_inv_mat_fn, p),
-            # ),
+            torch.compile(
+                lambda p: _eval_christoffels(self.n, g_mat_fn, g_inv_mat_fn, p),
+            ),
         )
 
     def __call__(self, p):
         metric = Metric(self, self.fn(*_coords(p)))
         return MetricView(metric, False)
-
-    # def inv(self, p):
-    #     g = self(p)
-    #     return torch.inverse(g)
 
 
 # used internally
