@@ -3,16 +3,19 @@ from typing import Callable, Tuple, List, Union
 
 from enum import Enum
 
-import torch
-from torch.autograd.functional import jacobian
+# import torch
+# from torch.autograd.functional import jacobian
 
-from geodesic_funcs import ExpMethod, LogMethod, DistSquaredMap, dist_map
+from jax import jacfwd, grad, jacrev, jit
+import jax.numpy as jnp
+
+from geodesic_funcs import ExpMethod, LogMethod, dist_map, dist_squared_map
 from metric import MetricField, Metric, MetricView, RnMetricField
 from connection import Connection
 
 from dataclasses import dataclass
 
-from geodesic_funcs import DistSquaredMap
+# from geodesic_funcs import DistSquaredMap
 
 from time import time
 
@@ -27,9 +30,9 @@ class MfldCfg:
     dist_method: LogMethod = LogMethod.APPROX_SO
 
 
-def dist_squared_map(p, q, cfg: MfldCfg):
+def dist_squared(p, q, cfg: MfldCfg):
     # distance wrapper function to use clean config interface
-    return DistSquaredMap.apply(p, q, cfg.metric_field, cfg.conn, cfg.dist_method)
+    return dist_squared_map(p, q, cfg.metric_field, cfg.conn, cfg.dist_method)
 
 
 @dataclass
@@ -44,7 +47,7 @@ class SolverCfg:
 class SolverResult:
     success: bool
     iters: int
-    p: torch.tensor
+    p: jnp.ndarray
 
 
 def riem_grad_descent(
@@ -57,12 +60,13 @@ def riem_grad_descent(
     p = p0
 
     for i in range(solv_cfg.max_iters):
-        df = jacobian(lambda p: f(p, mfld_cfg, *args), p, create_graph=True)
+        df = jacrev(f)(p, mfld_cfg, *args)
+        # df = jacobian(lambda p: f(p, mfld_cfg, *args), p, create_graph=True)
         grad_f = mfld_cfg.metric_field(p).sharp(df)
 
         p -= solv_cfg.damp * grad_f
 
-        # print(f"subsolver p: {p}")
+        print(f"subsolver p: {p}")
 
         if (
             p_prev is not None
@@ -116,7 +120,7 @@ class ConstrainedSolverResult:
     constrs_violated: bool
     subsolver_failed: bool
     iters: int
-    p: torch.tensor
+    p: jnp.ndarray
     g_mults: List[Tuple[float, float]]  # g lagrange multipliers
     h_mults: List[Tuple[float, float]]  # h lagrange multipliers
     gs_eval: List[float]  # value of the constraints
@@ -126,8 +130,8 @@ class ConstrainedSolverResult:
 def _ralm_subproblem(p, rho, f, gs, hs, mu_mults, lambda_mults, mfld_cfg, *args):
     sum = 0
     for i in range(len(gs)):
-        sum += torch.maximum(
-            torch.tensor(0.0), mu_mults[i] / rho + gs[i](p, mfld_cfg, *args)
+        sum += jnp.maximum(
+            jnp.array(0.0), mu_mults[i] / rho + gs[i](p, mfld_cfg, *args)
         )
     for j in range(len(hs)):
         sum += (hs[j](p, mfld_cfg, *args) + lambda_mults[j] / rho) ** 2
@@ -136,10 +140,10 @@ def _ralm_subproblem(p, rho, f, gs, hs, mu_mults, lambda_mults, mfld_cfg, *args)
 
 
 def _constraints_violated(p, gs, hs, mfld_cfg: MfldCfg, eq_eps, *args):
-    gs_eval = torch.tensor([g(p, mfld_cfg, *args) for g in gs])
-    hs_eval = torch.tensor([h(p, mfld_cfg, *args) for h in hs])
+    gs_eval: jnp.ndarray = jnp.array([g(p, mfld_cfg, *args) for g in gs])
+    hs_eval: jnp.ndarray = jnp.array([h(p, mfld_cfg, *args) for h in hs])
 
-    constr_violated = torch.any(gs_eval > 0.0) or torch.any(hs_eval.abs() > eq_eps)
+    constr_violated = jnp.any(gs_eval > 0.0) or jnp.any(abs(hs_eval) > eq_eps)
 
     return constr_violated, gs_eval, hs_eval
 
@@ -154,11 +158,11 @@ def ralm(f, gs, hs, p0, mfld_cfg: MfldCfg, solve_cfg: ConstrainedSolverCfg, *arg
     n = len(gs)  # number of inequalities
     m = len(hs)  # number of equalities
 
-    g_mults = torch.zeros((n,))
-    h_mults = torch.zeros((m,))
+    g_mults = jnp.zeros((n,))
+    h_mults = jnp.zeros((m,))
 
     for i in range(solve_cfg.max_iters):
-        # print(f"i: {i}")
+        print(f"i: {i}")
 
         # finds the point that minimizes the augmented lagrangian function with
         # with the current lagrangian multipliers
@@ -226,8 +230,12 @@ def ralm(f, gs, hs, p0, mfld_cfg: MfldCfg, solve_cfg: ConstrainedSolverCfg, *arg
                 if type(solve_cfg.g_mult_clips) is tuple
                 else solve_cfg.g_mult_clips[j]
             )
-            g_mults[j] = torch.clip(
-                g_mults[j] + solve_cfg.penalty * gs_eval[j], gj_min_clip, gj_max_clip
+            g_mults = g_mults.at[j].set(
+                jnp.clip(
+                    g_mults[j] + solve_cfg.penalty * gs_eval[j],
+                    gj_min_clip,
+                    gj_max_clip,
+                )
             )
         for j in range(m):
             hj_min_clip, hj_max_clip = (
@@ -235,8 +243,12 @@ def ralm(f, gs, hs, p0, mfld_cfg: MfldCfg, solve_cfg: ConstrainedSolverCfg, *arg
                 if type(solve_cfg.h_mult_clips) is tuple
                 else solve_cfg.h_mult_clips[j]
             )
-            h_mults[j] = torch.clip(
-                h_mults[j] + solve_cfg.penalty * hs_eval[j], hj_min_clip, hj_max_clip
+            h_mults = h_mults.at[j].set(
+                jnp.clip(
+                    h_mults[j] + solve_cfg.penalty * hs_eval[j],
+                    hj_min_clip,
+                    hj_max_clip,
+                )
             )
 
         p_prev = p
@@ -262,8 +274,8 @@ def ralm(f, gs, hs, p0, mfld_cfg: MfldCfg, solve_cfg: ConstrainedSolverCfg, *arg
 
 
 def test_riem_grad_descent():
-    p = torch.tensor([1.0, 2.0])
-    q = torch.tensor([4.0, -1.0])
+    p = jnp.array([1.0, 2.0])
+    q = jnp.array([4.0, -1.0])
 
     def f(p, cfg: MfldCfg, q):
         return 0.5 * dist_squared_map(p, q, cfg)
@@ -282,18 +294,20 @@ def test_ralm():
     # to be larger than the decay rate of the subsolver (seems to sometimes
     # get stuck at a position that violates constraints if we decay too quickly)
 
-    p = torch.tensor([-2.0, 0.0])
-    q = torch.tensor([0.0, 0.0])  # want to approach this point
+    p = jnp.array([-2.0, 0.0])
+    q = jnp.array([0.0, 0.0])  # want to approach this point
 
-    c = torch.tensor([2.0, 0.0])  # circle centerd on opposite side of p
+    c = jnp.array([2.0, 0.0])  # circle centerd on opposite side of p
     rad = 1.0
 
+    # @jit(static_argnums=(1, 2, 3, 4))
     def f(p, cfg: MfldCfg, q, c, rad):
-        return 0.5 * dist_squared_map(p, q, cfg)
+        return 0.5 * dist_squared(p, q, cfg)
 
+    # @jit(static_argnums=(1, 2, 3, 4))
     def g(p, cfg: MfldCfg, q, c, rad):
         # all g must be defined such that g(p) <= 0
-        return dist_squared_map(p, c, cfg) - rad**2
+        return dist_squared(p, c, cfg) - rad**2
 
     metric_field = RnMetricField(2)
     mfld_cfg = MfldCfg(metric_field, metric_field.christoffels())

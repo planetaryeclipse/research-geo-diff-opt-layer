@@ -7,3 +7,4 @@ cvxpy
 ipykernel
 sortedcontainers
 torch
+jax[cuda13]
