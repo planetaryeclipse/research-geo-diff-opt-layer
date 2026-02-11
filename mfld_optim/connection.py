@@ -1,0 +1,32 @@
+from enum import Enum
+from aenum import member
+
+import torch
+
+import numpy as np
+from scipy.optimize import newton
+
+import itertools
+
+from abc import abstractmethod, ABC
+
+
+class Connection(ABC):
+    def __init__(self, n, r):
+        self._n = n  # dimension of the underlying space
+        self._r = r  # dimension of the bundle vector space
+
+    @property
+    def n(self) -> int:
+        return self._n
+
+    @property
+    def r(self) -> int:
+        return self._r
+
+    @abstractmethod
+    def _eval(self, p):
+        pass
+
+    def __call__(self, p):
+        return self._eval(p)
