@@ -6,6 +6,7 @@ from enum import Enum
 from aenum import member
 from scipy.optimize import root
 
+from metric import RnMetricField
 from connection import Connection
 
 
@@ -31,7 +32,7 @@ def _initial_geod_vel_f_so(v, p, q, conn_coeffs, t, t0) -> np.ndarray:
 
     f = np.zeros(n)
     for k in range(n):
-        f[k] = v[k] * (t - t0) + (q[k] - p[k])
+        f[k] = v[k] * (t - t0) + (p[k] - q[k])
         for i, j in itertools.product(range(n), range(n)):
             f[k] -= 0.5 * conn_coeffs[k, i, j] * v[i] * v[j] * (t - t0) ** 2
     return f
@@ -88,3 +89,17 @@ def _exp_map_so_approx(p, v, conn):
 
 def _log_map_so_approx(p, q, conn):
     return _solve_initial_geod_vel_so(p, q, 0.0, 1.0, conn)
+
+
+def test():
+    p = p = torch.tensor([1.0, 2.0])
+    q = torch.tensor([4.0, -1.0])
+
+    g = RnMetricField(2)
+    conn = g.christoffels()
+
+    print(_log_map_so_approx(p, q, conn))
+
+
+if __name__ == "__main__":
+    test()
