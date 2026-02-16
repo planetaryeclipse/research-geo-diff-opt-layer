@@ -101,7 +101,7 @@ def gen_mpc_controls(
             model_step,
             state_cost,
         ),
-        u_steps_guess,
+        u_steps_guess, options = {"maxiter": 12, "disp": True}  #12 based on trial and error
     )
 
     if not result.success:
@@ -114,10 +114,20 @@ def dyn_ext_unicycle_cost(t, y, u, k, params):
     x, y, theta, v, omega = y
     x_traj, y_traj, theta_traj = params.traj_gen(t)
 
+    # 1. Calculate the vector from current position to target
+    dx = x_traj - x
+    dy = y_traj - y
+
+    # 2. Compute the "look-at" angle (angle to the goal)
+    # This is the angle the agent SHOULD be at to face the target
+    theta_goal = np.arctan2(dy, dx)
+    angle_err = theta_goal - theta
+    angle_err = (angle_err + np.pi) % (2 * np.pi) - np.pi
+
     state_cost = (
         0.5 * params.dist_cost * ((x_traj - x) ** 2 + (y_traj - y) ** 2)
-        + 0.5 * params.ang_cost * (theta - theta_traj) ** 2
-        +  (params.neg_v_cost + params.neg_v_cost_slope * abs(v) )* (v < 0)
+        + 0.5 * params.ang_cost * (angle_err) ** 2
+        # +  (params.neg_v_cost + params.neg_v_cost_slope * abs(v) )* (v < 0)
     )
 
     input_cost = u.T @ params.u_cost @ u
@@ -172,15 +182,15 @@ u0 = np.array([force0, torque0])
 
 
 
-dt = 0.075
+dt = 0.1
 
 num_samples = int(t_final / dt)
 
 spline_method = CubicSpline
 
 t = np.linspace(0, t_final, num_samples)
-# path_points = np.array([(0.0, 0.0, 0.0), (x1, y1, t1),(x2, y2, t2), (x3, y3, t_final)])
-path_points = np.array([(0.0, 0.0, 0.0), (1.0, 3.0, t_final / 4), (4, 2, 2*t_final/3), (5.0, 0.0, t_final)])
+path_points = np.array([(0.0, 0.0, 0.0), (x1, y1, t1),(x2, y2, t2), (x3, y3, t_final)])
+# path_points = np.array([(0.0, 0.0, 0.0), (1.0, 3.0, t_final / 4), (4, 2, 2*t_final/3), (5.0, 0.0, t_final)])  #smooth test spline
 
 
 # generators for the spline
@@ -242,7 +252,7 @@ u_hist = []
 p_curr = p0
 u_curr = u0
 
-num_mpc_steps = 6
+num_mpc_steps = 5
 
 for i in range(num_samples):
     t_curr = t[i]
