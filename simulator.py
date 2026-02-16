@@ -17,15 +17,6 @@ def generate_spline(t_final, points = None, dt=0.01, spline_type="cubic"):
     if points is None:
         points = np.array([(0.0, 0.0, 0.0), (5.0, 5.0, t_final / 2), (10.0, 0.0, t_final)])
 
-        # points = np.array(
-        #     # defines a smoothed triangular path
-        #     [
-        #         # (x, y, t)
-        #         (0.0, 0.0, 0.0),
-        #         (5.0, 5.0, 15.0),
-        #         (10.0, 0.0, 20.0),
-        #     ]
-        # )
 
     (x_spline, y_spline) = (
         spline_method(points[:, 2], points[:, 0]),
@@ -126,6 +117,7 @@ def dyn_ext_unicycle_cost(t, y, u, k, params):
     state_cost = (
         0.5 * params.dist_cost * ((x_traj - x) ** 2 + (y_traj - y) ** 2)
         + 0.5 * params.ang_cost * (theta - theta_traj) ** 2
+        +  (params.neg_v_cost + params.neg_v_cost_slope * abs(v) )* (v < 0)
     )
 
     input_cost = u.T @ params.u_cost @ u
@@ -169,7 +161,7 @@ x2 = random.randint(0, x_max)
 y2 = random.randint(0, y_max)
 x3 = random.randint(0, x_max)
 y3 = random.randint(0, y_max)
-theta0 = np.random.uniform(0, 2*np.pi)
+theta0 = np.random.uniform(0, np.pi/2)
 vel0 = np.random.uniform(-initial_vel_variance, initial_vel_variance)
 dot_theta0 = np.random.uniform(-initial_torque_variance, initial_torque_variance)
 force0 = np.random.uniform(-initial_dot_theta_variance, initial_dot_theta_variance)
@@ -180,15 +172,15 @@ u0 = np.array([force0, torque0])
 
 
 
-dt = 0.1
+dt = 0.075
 
 num_samples = int(t_final / dt)
 
 spline_method = CubicSpline
 
 t = np.linspace(0, t_final, num_samples)
-path_points = np.array([(0.0, 0.0, 0.0), (x1, y1, t1),(x2, y2, t2), (x3, y3, t_final)])
-
+# path_points = np.array([(0.0, 0.0, 0.0), (x1, y1, t1),(x2, y2, t2), (x3, y3, t_final)])
+path_points = np.array([(0.0, 0.0, 0.0), (1.0, 3.0, t_final / 4), (4, 2, 2*t_final/3), (5.0, 0.0, t_final)])
 
 
 # generators for the spline
@@ -217,8 +209,11 @@ def traj(t):
 
 @dataclass
 class DynExtUnicycleMCPParams:
-    dist_cost = 3.0
-    ang_cost = 1.5
+    dist_cost = 2.5
+    ang_cost = 1
+    neg_v_cost = 100
+    neg_v_cost_slope = 20
+
     u_cost = 0.5 * np.identity(2)
     traj_gen = traj
     fut_pred_factor = lambda k: 1.0 * k if k > 0 else 1.0
@@ -247,7 +242,7 @@ u_hist = []
 p_curr = p0
 u_curr = u0
 
-num_mpc_steps = 5
+num_mpc_steps = 6
 
 for i in range(num_samples):
     t_curr = t[i]
@@ -285,15 +280,70 @@ for i in range(num_samples):
 p_hist = np.array(p_hist)
 u_hist = np.array(u_hist)
 
-fig, ax = plt.subplots()
+step = 10
+indices = np.arange(0, len(p_hist), step)
 
-ax.plot(p_hist[:, 0], p_hist[:, 1])
-ax.plot(x_traj, y_traj)
+plt.subplot(2, 2, 1)
+plt.plot(p_hist[:, 0], p_hist[:, 1], label = "actual")
+plt.plot(x_traj, y_traj, label = "ideal")
+
+# 2. Add dots that change color over time
+# 'c=indices' tells matplotlib to color based on the time step
+# 'cmap' defines the color gradient (e.g., 'viridis', 'plasma', 'jet')
+scatter_actual = plt.scatter(p_hist[indices, 0], p_hist[indices, 1], 
+                             c=indices, cmap='viridis', s=20, label="actual dots", zorder=3)
+
+scatter_ideal = plt.scatter(x_traj[indices], y_traj[indices], 
+                            c=indices, cmap='viridis', s=20, marker='x', label="ideal dots", zorder=3)
+
+# Optional: Add a colorbar to show time progression
+# plt.colorbar(scatter_actual, label="Time Step")
+plt.title("Trajectory")
+plt.legend()
+
+# Plot 2
+ax1 = plt.subplot(2, 2, 2)
+angle_deg = np.degrees(p_hist[:, 2])  # Convert radians to degrees for better visualization
+
+# Plot Angle on the Left Y-axis
+color1 = 'tab:blue'
+ax1.set_xlabel('Time Steps')
+ax1.set_ylabel('Angle (deg)', color=color1)
+ax1.plot(angle_deg, color=color1, linewidth=2)
+ax1.tick_params(axis='y', labelcolor=color1)
+ax1.set_title("Angle & Velocity")
+ax2 = ax1.twinx() 
+
+# Plot Velocity on the Right Y-axis
+color2 = 'tab:red'
+ax2.set_ylabel('Velocity', color=color2)
+ax2.plot(p_hist[:, 3], color=color2, linewidth=2)
+ax2.tick_params(axis='y', labelcolor=color2)
 
 
+# Plot 3: forces and torques
+ax1 = plt.subplot(2, 2, 3)
 
+# Plot Angle on the Left Y-axis
+color1 = 'tab:blue'
+ax1.set_xlabel('Time Steps')
+ax1.set_ylabel('Torque', color=color1)
+ax1.plot(u_hist[:, 1], color=color1, linewidth=2) #force
+ax1.tick_params(axis='y', labelcolor=color1)
+ax1.set_title("Force and Torque")
+ax2 = ax1.twinx() 
 
+# Plot Velocity on the Right Y-axis
+color2 = 'tab:red'
+ax2.set_ylabel('Force', color=color2)
+ax2.plot(u_hist[:, 0], color=color2, linewidth=2)
+ax2.tick_params(axis='y', labelcolor=color2)
+
+plt.tight_layout()
 plt.show()
+
+
+
 
 print(u_hist[-1])
 
