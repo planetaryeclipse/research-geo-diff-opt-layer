@@ -9,6 +9,8 @@ from pathlib import Path
 import random
 from dataclasses import dataclass
 
+from sympy.logic import false
+
 
 
 def generate_spline(t_final, points = None, dt=0.01, spline_type="cubic"):
@@ -101,7 +103,7 @@ def gen_mpc_controls(
             model_step,
             state_cost,
         ),
-        u_steps_guess, options = {"maxiter": 12, "disp": True}  #12 based on trial and error
+        u_steps_guess, options = {"maxiter": 12, "disp": false}  #12 based on trial and error
     )
 
     if not result.success:
@@ -148,7 +150,7 @@ def dyn_ext_unicycle_model_step(t, dt, y, u, params):
 
 #Variables
 dt = 0.01
-t_final = 50.0
+t_final = 30.0
 num_samples = int(t_final / dt)
 
 #create random points
@@ -156,8 +158,8 @@ x_initial_max = 5
 y_initial_max = 5
 initial_vel_variance = 2
 initial_dot_theta_variance = 2
-initial_force_variance = 2
-initial_torque_variance = 2
+initial_force_variance = 5
+initial_torque_variance = 1.5
 
 x_max = 20
 y_max = 20
@@ -165,12 +167,12 @@ t1 = random.randint(1, 7)
 t2 = random.randint(8, 15)
 x0 = random.randint(-x_initial_max, x_initial_max)
 y0 = random.randint(-y_initial_max, y_initial_max)
-x1 = random.randint(0, x_max-1)
-y1 = random.randint(0, y_max)
-x2 = random.randint(0, x_max)
-y2 = random.randint(0, y_max)
-x3 = random.randint(0, x_max)
-y3 = random.randint(0, y_max)
+x1 = random.randint(-x_max, x_max-1)
+y1 = random.randint(-y_max, y_max)
+x2 = random.randint(-x_max, x_max)
+y2 = random.randint(-y_max, y_max)
+x3 = random.randint(-x_max, x_max)
+y3 = random.randint(-y_max, y_max)
 theta0 = np.random.uniform(0, np.pi/2)
 vel0 = np.random.uniform(-initial_vel_variance, initial_vel_variance)
 dot_theta0 = np.random.uniform(-initial_torque_variance, initial_torque_variance)
@@ -281,7 +283,7 @@ for i in range(num_samples):
         t_curr, dt, p_curr, u_optimal, DynExtUnicycleMCPParams
     )
 
-    if i > 150:
+    if i > 250:
         break
 
 
@@ -296,6 +298,8 @@ indices = np.arange(0, len(p_hist), step)
 plt.subplot(2, 2, 1)
 plt.plot(p_hist[:, 0], p_hist[:, 1], label = "actual")
 plt.plot(x_traj, y_traj, label = "ideal")
+plt.ylabel("Y Position")
+plt.xlabel("X Position")
 
 # 2. Add dots that change color over time
 # 'c=indices' tells matplotlib to color based on the time step
@@ -349,11 +353,21 @@ ax2.set_ylabel('Force', color=color2)
 ax2.plot(u_hist[:, 0], color=color2, linewidth=2)
 ax2.tick_params(axis='y', labelcolor=color2)
 
+
+
+#plot 4, distance error
+plt.subplot(2, 2, 4)
+size_index = len(p_hist) 
+dx = x_traj[:size_index] - p_hist[:, 0]
+dy = y_traj[:size_index] - p_hist[:, 1]
+dist_error = np.sqrt(dx**2 + dy**2)
+plt.plot (dist_error )
+plt.title("Position Error")
+plt.ylabel("Position Error")
+plt.xlabel("Time Steps")
+
 plt.tight_layout()
-plt.show()
-
-
-
+# plt.show()
 
 print(u_hist[-1])
 
