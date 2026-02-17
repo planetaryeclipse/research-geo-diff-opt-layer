@@ -2,7 +2,7 @@
 
 # --- Configuration ---
 INSTANCES_IN_PARALLEL=10  # This is your 'x'
-TOTAL_BATCHES=5         # This is your 'y'
+TOTAL_BATCHES=10         # This is your 'y'
 PYTHON_EXEC="/Users/jiaanli/miniforge3/envs/cbf/bin/python"
 SCRIPT_PATH="/Users/jiaanli/ura/research-geo-diff-opt-layer/simulator.py"
 
