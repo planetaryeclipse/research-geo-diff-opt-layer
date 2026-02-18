@@ -28,5 +28,14 @@ class Connection(ABC):
     def _eval(self, p):
         pass
 
-    def __call__(self, p):
+    def __call__(self, *coords):
+        # in the case of product manifolds then we merge the coordinates
+        p = torch.cat(*coords, dim=0)
+        coords_n = p.shape[0]
+        if coords_n != self.n:
+            raise ValueError(
+                "Coordinates passed to connection does not match dimension of "
+                f"underlying manifold: n={self.n}, coords_n={coords_n}"
+            )
+
         return self._eval(p)
