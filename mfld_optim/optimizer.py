@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Callable, Tuple, List, Union
+from typing import Callable, Tuple, List, Union, overload
 
 from enum import Enum
 
@@ -7,7 +7,12 @@ import torch
 from torch.autograd.functional import jacobian
 from torch.func import jacrev, jacfwd, grad
 
-from geodesic_funcs import ExpMethod, LogMethod, DistSquaredMap, dist_map
+from geodesic_funcs import (
+    ExpMethod,
+    LogMethod,
+    dist_map,
+)
+import geodesic_funcs
 from metric import MetricField, Metric, MetricView, RnMetricField
 from connection import Connection
 
@@ -28,15 +33,17 @@ class MfldCfg:
     dist_method: LogMethod = LogMethod.APPROX_SO
 
 
-def dist_squared_map(p, q, cfg: MfldCfg):
-    # distance wrapper function to use clean config interface
-    return DistSquaredMap.apply(p, q, cfg.metric_field, cfg.conn, cfg.dist_method)
+def dist_squared_map(p, q, cfg: MfldCfg) -> torch.tensor:
+    # allows clean mfldcfg interface for use in cost and constraint functions
+    return geodesic_funcs.dist_squared_map(
+        p, q, cfg.metric_field, cfg.conn, cfg.dist_method
+    )
 
 
 @dataclass
 class SolverCfg:
-    conv_eps = 1e-3
-    damp = 0.4
+    conv_eps = 1e-6
+    damp = 0.6
     damp_growth = 0.95  # decays (helps with eventual convergence)
     max_iters = 1000
 
@@ -58,7 +65,9 @@ def riem_grad_descent(
     p: torch.tensor = p0
 
     for i in range(solv_cfg.max_iters):
-        # the jacobian takes too long so we abuse backward propagation here
+        # the jacobian takes too long so we abuse backward propagation here to
+        # compute the differential of f (the gradient according to torch is
+        # equivalent to differential in differential geometric terms)
         p.requires_grad = True
         p.grad = None
 
@@ -67,10 +76,9 @@ def riem_grad_descent(
 
         p.requires_grad = False
 
+        # updates the point using the exponential map
         grad_f = mfld_cfg.metric_field(p).sharp(df)
-        p -= solv_cfg.damp * grad_f
-
-        # print(f"subsolver p: {p}")
+        p = mfld_cfg.exp_method(p, -solv_cfg.damp * grad_f, mfld_cfg.conn)
 
         if (
             p_prev is not None
@@ -323,7 +331,6 @@ def test_ralm():
     # print(conn(p))
 
     mfld_cfg = MfldCfg(metric_field, conn)
-
     constr_solv_cfg = ConstrainedSolverCfg(
         SubsolverMethod.RIEM_GRAD_DESCENT, SolverCfg()
     )

@@ -9,19 +9,37 @@ from scipy.optimize import root
 from metric import RnMetricField
 from connection import Connection
 
+from typing import Tuple
 
-def _solve_geod_pos_so(p, v, t0: float, t: float, conn: Connection) -> np.ndarray:
+
+def _inspect_conn_coeffs(conn_coeffs: np.ndarray) -> Tuple[int, int]:
+    n = conn_coeffs.shape[0]
+    r = conn_coeffs.shape[2]
+
+    if n != conn_coeffs.shape[1]:
+        raise ValueError(
+            f"connection coefficients must share length on dims 0, 1: dim0={n}, dim1={conn_coeffs.shape[1]}"
+        )
+
+    return n, r
+
+
+def _solve_geod_pos_so(
+    p: np.ndarray, v: np.ndarray, t0: float, t: float, conn_coeffs: np.ndarray
+) -> np.ndarray:
     # solves for the updated position along the geodesic using the second order
     # approximation of the geodesic (requires a tangent bundle connection)
 
-    if conn.n != conn.r:
-        raise ValueError("tangent bundle is a n-dim vector bundle")
+    n, r = _inspect_conn_coeffs(conn_coeffs)
+    if n != r:
+        raise ValueError(
+            f"connection must be defined on tangent bundle so n == r: n={n}, {r}"
+        )
 
-    conn_coeffs: np.ndarray = conn(p)
-    q = np.zeros(conn.n)
-    for k in range(conn.n):
+    q = np.zeros((n), dtype=p.dtype)  # otherwise causes issues in the chain
+    for k in range(n):
         q[k] += p[k] + v[k] * (t - t0)
-        for i, j in itertools.product(range(conn.n), range(conn.r)):
+        for i, j in itertools.product(range(n), range(n)):
             q[k] -= 0.5 * conn_coeffs[k, i, j] * v[i] * v[j] * (t - t0) ** 2
 
     return q
@@ -30,7 +48,7 @@ def _solve_geod_pos_so(p, v, t0: float, t: float, conn: Connection) -> np.ndarra
 def _initial_geod_vel_f_so(v, p, q, conn_coeffs, t, t0) -> np.ndarray:
     n = len(v)
 
-    f = np.zeros(n)
+    f = np.zeros(n, dtype=p.dtype)
     for k in range(n):
         f[k] = v[k] * (t - t0) + (p[k] - q[k])
         for i, j in itertools.product(range(n), range(n)):
@@ -41,7 +59,7 @@ def _initial_geod_vel_f_so(v, p, q, conn_coeffs, t, t0) -> np.ndarray:
 def _initial_geod_vel_fprime_so(v, p, q, conn_coeffs, t, t0) -> np.ndarray:
     n = len(v)
 
-    df_dv = np.zeros((n, n))
+    df_dv = np.zeros((n, n), dtype=p.dtype)
     for k, i in itertools.product(range(n), range(n)):
         if k == i:
             df_dv[k] += t - t0
@@ -56,51 +74,30 @@ def _initial_geod_vel_fprime_so(v, p, q, conn_coeffs, t, t0) -> np.ndarray:
 
 
 def _solve_initial_geod_vel_so(
-    p, q, t0: float, t: float, conn: Connection
-) -> torch.tensor:
+    p: np.ndarray, q: np.ndarray, t0: float, t: float, conn_coeffs: np.ndarray
+) -> np.ndarray:
     # solves for the initial velocity along the geodesic using the second order
     # approximation of the geodesic (requires a tangent bundle connection)
 
-    if conn.n != conn.r:
-        raise ValueError("tangent bundle is a n-dim vector bundle")
-
-    with torch.no_grad():
-        conn_coeffs: np.ndarray = conn(p)
-        v_guess = (q - p) / (t - t0)  # Euclidean is the guess
-
-        result = root(
-            _initial_geod_vel_f_so,
-            v_guess,
-            args=(p, q, conn_coeffs, t, t0),
-            jac=_initial_geod_vel_fprime_so,
+    n, r = _inspect_conn_coeffs(conn_coeffs)
+    if n != r:
+        raise ValueError(
+            f"connection must be defined on tangent bundle so n == r: n={n}, {r}"
         )
+
+    v_guess = (q - p) / (t - t0)  # Euclidean is the guess
+
+    result = root(
+        _initial_geod_vel_f_so,
+        v_guess,
+        args=(p, q, conn_coeffs, t, t0),
+        jac=_initial_geod_vel_fprime_so,
+    )
 
     if result.success:
-        # keep everything as a torch tensor of float32 to prevent shenanigans
-        return torch.tensor(result.x, dtype=torch.float32)
+        # root operation computes a float64 for some reason
+        return result.x.astype(dtype=p.dtype)
     else:
         raise ValueError(
-            f"Failed to find solution to logarithmic map: {result.message}"
+            f"failed to find solution to logarithmic map: {result.message}"
         )
-
-
-def _exp_map_so_approx(p, v, conn):
-    return _solve_geod_pos_so(p, v, 0.0, 1.0, conn)
-
-
-def _log_map_so_approx(p, q, conn):
-    return _solve_initial_geod_vel_so(p, q, 0.0, 1.0, conn)
-
-
-def test():
-    p = p = torch.tensor([1.0, 2.0])
-    q = torch.tensor([4.0, -1.0])
-
-    g = RnMetricField(2)
-    conn = g.christoffels()
-
-    print(_log_map_so_approx(p, q, conn))
-
-
-if __name__ == "__main__":
-    test()
