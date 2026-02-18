@@ -7,3 +7,5 @@ cvxpy
 ipykernel
 sortedcontainers
 torch
+optnet
+cvxpylayers

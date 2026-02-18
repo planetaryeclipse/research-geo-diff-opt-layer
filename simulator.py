@@ -1,36 +1,24 @@
-from tkinter import Y
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy as sp
-import scipy.integrate as integrate
+
 from scipy.integrate import solve_ivp
-from scipy.interpolate import CubicSpline, UnivariateSpline
-import torch
-from torch._numpy import float64
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
-from torch.nn.modules.module import Module
+from scipy.optimize import minimize
+from scipy.interpolate import CubicSpline
 from pathlib import Path
-from optimal_traj_control.automated_test.optimal_control import (
-    dynamic_unicycle_optimal_traj_derivations,
-    convert_sym_prob_to_cvxpy_prob,
-)
+
 import random
+from dataclasses import dataclass
+
+from sympy.logic import false
 
 
-def generate_spline(t_f, points = None, dt=0.01, spline_type="cubic"):
+
+def generate_spline(t_final, points = None, dt=0.01, spline_type="cubic"):
     spline_method = CubicSpline  # for convenience
-    t = np.linspace(0, t_f, int(t_f / dt))
+    t = np.linspace(0, t_final, int(t_final / dt))
     if points is None:
-        points = np.array(
-            # defines a smoothed triangular path
-            [
-                # (x, y, t)
-                (0.0, 0.0, 0.0),
-                (5.0, 5.0, 15.0),
-                (10.0, 0.0, 20.0),
-            ]
-        )
+        points = np.array([(0.0, 0.0, 0.0), (5.0, 5.0, t_final / 2), (10.0, 0.0, t_final)])
+
 
     (x_spline, y_spline) = (
         spline_method(points[:, 2], points[:, 0]),
@@ -56,151 +44,19 @@ def generate_spline(t_f, points = None, dt=0.01, spline_type="cubic"):
     return traj, t
 
 
-
-    """
-    Plot both ideal and ODE trajectories on the same plot with time visualization.
-
-    Parameters:
-    -----------
-    ideal_xs : array-like
-        X positions of ideal trajectory
-    ideal_ys : array-like
-        Y positions of ideal trajectory
-    ideal_times : array-like
-        Time values for ideal trajectory
-    ode_xs : array-like
-        X positions of ODE trajectory (handles nested lists)
-    ode_ys : array-like
-        Y positions of ODE trajectory (handles nested lists)
-    ode_times : array-like
-        Time values for ODE trajectory
-    ax : matplotlib Axes, optional
-        Axes to plot on. If None, creates new figure.
-    figsize : tuple
-        Figure size (width, height)
-    ideal_colormap : str
-        Colormap for ideal trajectory (default: 'viridis')
-    ode_colormap : str
-        Colormap for ODE trajectory (default: 'viridis')
-    ideal_label : str
-        Label for ideal trajectory
-    ode_label : str
-        Label for ODE trajectory
-
-    Returns:
-    --------
-    fig : matplotlib figure
-        The figure object
-    ax : matplotlib axes
-        The axes object
-    """
-
-    def flatten_to_array(data):
-        """Convert nested lists/arrays to flat 1D array."""
-        result = []
-        for item in data:
-            if isinstance(item, (list, tuple, np.ndarray)):
-                if len(item) > 0:
-                    if isinstance(item[0], (list, tuple, np.ndarray)):
-                        result.append(float(item[0][0]) if len(item[0]) > 0 else 0.0)
-                    else:
-                        result.append(float(item[0]))
-                else:
-                    result.append(0.0)
-            else:
-                result.append(float(item))
-        return np.array(result, dtype=float)
-
-    # Flatten ODE trajectory arrays
-    ode_xs = flatten_to_array(ode_xs)
-    ode_ys = flatten_to_array(ode_ys)
-
-    # Convert to numpy arrays
-    ideal_xs = np.asarray(ideal_xs, dtype=float)
-    ideal_ys = np.asarray(ideal_ys, dtype=float)
-    ideal_times = np.asarray(ideal_times, dtype=float)
-    ode_times = np.asarray(ode_times, dtype=float)
-
-    # Ensure same length for ODE trajectory
-    min_len = min(len(ode_xs), len(ode_ys), len(ode_times))
-    ode_xs = ode_xs[:min_len]
-    ode_ys = ode_ys[:min_len]
-    ode_times = ode_times[:min_len]
-
-    # Find common time range for normalization
-    time_min = min(ideal_times.min(), ode_times.min())
-    time_max = max(ideal_times.max(), ode_times.max())
-    norm_combined = plt.Normalize(vmin=time_min, vmax=time_max)
-
-    # Create figure if needed
-    if ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
-    else:
-        fig = ax.figure
-
-    # Plot ideal trajectory with time coloring
-    from matplotlib.collections import LineCollection
-
-    points_ideal = np.array([ideal_xs, ideal_ys]).T.reshape(-1, 1, 2)
-    segments_ideal = np.concatenate([points_ideal[:-1], points_ideal[1:]], axis=1)
-    cmap_ideal = plt.get_cmap(ideal_colormap)
-    lc_ideal = LineCollection(
-        segments_ideal,
-        cmap=cmap_ideal,
-        norm=norm_combined,
-        linewidth=2.5,
-        alpha=0.7,
-        label=ideal_label,
-    )
-    lc_ideal.set_array(ideal_times)
-    ax.add_collection(lc_ideal)
-
-    # Plot ODE trajectory with time coloring
-    points_ode = np.array([ode_xs, ode_ys]).T.reshape(-1, 1, 2)
-    segments_ode = np.concatenate([points_ode[:-1], points_ode[1:]], axis=1)
-    cmap_ode = plt.get_cmap(ode_colormap)
-    lc_ode = LineCollection(
-        segments_ode,
-        cmap=cmap_ode,
-        norm=norm_combined,
-        linewidth=2,
-        alpha=0.8,
-        linestyle="--",
-        label=ode_label,
-    )
-    lc_ode.set_array(ode_times)
-    ax.add_collection(lc_ode)
-
-    # Add colorbar (using one of the collections for the scale)
-    cbar = plt.colorbar(lc_ideal, ax=ax)
-    cbar.set_label("Time", rotation=270, labelpad=15)
-
-    # Format axes
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
-    ax.set_aspect("equal", adjustable="box")
-    ax.set_xlim(-20, 20)
-    ax.set_ylim(-20, 20)
-    ax.grid(True, alpha=0.3)
-    ax.set_title("Ideal vs ODE Trajectory (colored by time)")
-    ax.legend()
-    plt.tight_layout()
-
-    return fig, ax
-
-
-def save_data_to_file(filepath,t, target_trajectory, vehicle_trajectory, controller_output, dt): #saves target x, y | current state x y theta | controller output
+def save_data_to_file(filepath, target_trajectory, vehicle_trajectory, controller_output, dt): #saves target x, y | current state x y theta | controller output
     filename = "data"
 
     root = Path(__file__).resolve().parent
     data_dir = root / "data"
     data_dir.mkdir(exist_ok=True)
 
+    target_trajectory = target_trajectory[:len(vehicle_trajectory), :]
+    print(target_trajectory.shape,vehicle_trajectory.shape, controller_output.shape  )
 
-    t = t.reshape(-1, 1)
-    print(t.shape,target_trajectory.shape,vehicle_trajectory.shape, controller_output.shape  )
+    #Shorten target trajectory isf vehicle trajectory short
 
-    data = np.concatenate([t, target_trajectory, vehicle_trajectory, controller_output], axis=1)
+    data = np.concatenate([ target_trajectory, vehicle_trajectory, controller_output], axis=1)
     print(data.shape)
     k = 1
     while True:
@@ -211,207 +67,317 @@ def save_data_to_file(filepath,t, target_trajectory, vehicle_trajectory, control
 
     np.savez_compressed(filepath, data = data)
 
+def _mpc_cost(t, y, u_steps, dt, params, model_step, state_cost):
+    # do not consider the current cost
+    num_steps = u_steps.shape[0]
+
+    total_cost = 0
+    y_upd = y
+
+    for i in range(num_steps):
+        u = u_steps[i, :]
+        t_upd = t + dt * i
+
+        y_upd = model_step(t_upd, dt, y_upd, u, params)
+        total_cost += state_cost(t_upd, y_upd, u, i, params)
+
+    return total_cost
+
+def gen_mpc_controls(
+    t, y, steps, dt, u_guess: np.ndarray, params, model_step, state_cost
+):
+    # must find inputs over finite time horizon that minimize the total cost
+
+    # repeats the guess then flattens to be able to use as variable for minimize
+    u_steps_guess = np.repeat(
+        u_guess.reshape((1, len(u_guess))), steps, axis=0
+    ).flatten()
+
+    result = minimize(
+        lambda u_steps: _mpc_cost(
+            t,
+            y,
+            u_steps.reshape((steps, len(u_guess))),  # each step as row
+            dt,
+            params,
+            model_step,
+            state_cost,
+        ),
+        u_steps_guess, options = {"maxiter": 12, "disp": false}  #12 based on trial and error
+    )
+
+    if not result.success:
+        print("Failed to fully converge at solution, is suboptimal")
+
+    result_u_steps = result.x.reshape((steps, len(u_guess)))
+    return (result_u_steps[0, :], result_u_steps)
+
+def dyn_ext_unicycle_cost(t, y, u, k, params):
+    x, y, theta, v, omega = y
+    x_traj, y_traj, theta_traj = params.traj_gen(t)
+
+    # 1. Calculate the vector from current position to target
+    dx = x_traj - x
+    dy = y_traj - y
+
+    # 2. Compute the "look-at" angle (angle to the goal)
+    # This is the angle the agent SHOULD be at to face the target
+    theta_goal = np.arctan2(dy, dx)
+    angle_err = theta_goal - theta
+    angle_err = (angle_err + np.pi) % (2 * np.pi) - np.pi
+
+    state_cost = (
+        0.5 * params.dist_cost * ((x_traj - x) ** 2 + (y_traj - y) ** 2)
+        + 0.5 * params.ang_cost * (angle_err) ** 2
+        # +  (params.neg_v_cost + params.neg_v_cost_slope * abs(v) )* (v < 0)
+    )
+
+    input_cost = u.T @ params.u_cost @ u
+
+    return params.fut_pred_factor(k) * state_cost + input_cost
+
+def dyn_ext_unicycle_model_step(t, dt, y, u, params):
+    u_f, u_t = u
+
+    def model_f(t, y):
+        _, _, theta, v, omega = y
+        return np.array([v * np.cos(theta), v * np.sin(theta), omega, u_f, u_t])
+
+    result = solve_ivp(model_f, [0, dt], y)
+    return result.y[:, -1]
+
+
 
 #Variables
 dt = 0.01
-t_f = 5
+t_final = 30.0
+num_samples = int(t_final / dt)
 
 #create random points
+x_initial_max = 5
+y_initial_max = 5
+initial_vel_variance = 2
+initial_dot_theta_variance = 2
+initial_force_variance = 5
+initial_torque_variance = 1.5
+
 x_max = 20
 y_max = 20
-t1 = random.randint(1, 18)
-t2 = random.randint(t1, 19)
-x1 = random.randint(0, x_max)
-y1 = random.randint(0, y_max)
-x2 = random.randint(0, x_max)
-y2 = random.randint(0, y_max)
-x3 = random.randint(0, x_max)
-y3 = random.randint(0, y_max)
+t1 = random.randint(1, 7)
+t2 = random.randint(8, 15)
+x0 = random.randint(-x_initial_max, x_initial_max)
+y0 = random.randint(-y_initial_max, y_initial_max)
+x1 = random.randint(-x_max, x_max-1)
+y1 = random.randint(-y_max, y_max)
+x2 = random.randint(-x_max, x_max)
+y2 = random.randint(-y_max, y_max)
+x3 = random.randint(-x_max, x_max)
+y3 = random.randint(-y_max, y_max)
+theta0 = np.random.uniform(0, np.pi/2)
+vel0 = np.random.uniform(-initial_vel_variance, initial_vel_variance)
+dot_theta0 = np.random.uniform(-initial_torque_variance, initial_torque_variance)
+force0 = np.random.uniform(-initial_dot_theta_variance, initial_dot_theta_variance)
+torque0 = np.random.uniform(-initial_torque_variance, initial_torque_variance)
 
-points = np.array(
-    # defines a smoothed triangular path
-    [
-        # (x, y, t)
-        (0.0, 0.0, 0.0),
-        (x1, y1, t1),
-        (x2, y2, t2),
-        (x3, y3, t_f),
-    ]
+p0 = np.array([x0, y0, theta0, vel0, dot_theta0])  # pointing straight up
+u0 = np.array([force0, torque0])
+
+
+
+dt = 0.1
+
+num_samples = int(t_final / dt)
+
+spline_method = CubicSpline
+
+t = np.linspace(0, t_final, num_samples)
+path_points = np.array([(0.0, 0.0, 0.0), (x1, y1, t1),(x2, y2, t2), (x3, y3, t_final)])
+# path_points = np.array([(0.0, 0.0, 0.0), (1.0, 3.0, t_final / 4), (4, 2, 2*t_final/3), (5.0, 0.0, t_final)])  #smooth test spline
+
+
+# generators for the spline
+x_spline, y_spline = (
+    spline_method(path_points[:, 2], path_points[:, 0]),
+    spline_method(path_points[:, 2], path_points[:, 1]),
 )
 
-(sympy_f, sympy_gs, sympy_opt_vars) = dynamic_unicycle_optimal_traj_derivations()
-(cntrl_prob_cvxpy, prob_var_map, prob_param_map) = convert_sym_prob_to_cvxpy_prob(
-    sympy_f, sympy_gs, sympy_opt_vars
+# computes the array indices
+x_traj, y_traj, x_dot_traj, y_dot_traj = (
+    x_spline(t),
+    y_spline(t),
+    x_spline.derivative()(t),
+    y_spline.derivative()(t),
+)
+(theta_traj, dot_theta_traj) = (
+    np.atan2(x_traj, y_traj),
+    np.atan2(x_dot_traj, y_dot_traj),
 )
 
-
-def get_param_var(mapping, idxs):
-    params = []
-    for idx in idxs:
-        pair = mapping[idx]
-
-        print(f"\tSympy: {pair[0]}")
-        params.append(pair[1])
-    return tuple(params)
-
-# restores handles to optimization variables (cvxpy)
-print("Variables:")
-(u_f_var, u_t_var, delta_var) = get_param_var(prob_var_map, (0, 1, 2))
+# generates a lookup handle
+def traj(t):
+    closest_idx = int(round(t / dt))
+    return (x_traj[closest_idx], y_traj[closest_idx], theta_traj[closest_idx])
 
 
-# restores handles to parameters (cvxpy)
-print("Parameters:")
-p_par = get_param_var(prob_param_map, (0,))[0]
-(alpha_par, beta_par) = get_param_var(
-    prob_param_map, (1, 8)
+@dataclass
+class DynExtUnicycleMCPParams:
+    dist_cost = 2.5
+    ang_cost = 1
+    neg_v_cost = 100
+    neg_v_cost_slope = 20
+
+    u_cost = 0.5 * np.identity(2)
+    traj_gen = traj
+    fut_pred_factor = lambda k: 1.0 * k if k > 0 else 1.0
+
+
+
+
+u_mpc = gen_mpc_controls(
+    0.0,
+    p0,
+    10,
+    dt,
+    np.zeros((2,)),
+    DynExtUnicycleMCPParams,
+    dyn_ext_unicycle_model_step,
+    dyn_ext_unicycle_cost,
 )
-(x_par, y_par, theta_par, v_par, omega_par) = get_param_var(
-    prob_param_map, (3, 6, 14, 10, 9)
-)
 
-(x_traj_par, y_traj_par, theta_traj_par) = get_param_var(
-    prob_param_map, (2, 5, 13, )
-)
-(
-    dot_x_traj_par,
-    dot_y_traj_par,
-    dot_theta_traj_par,
-) = get_param_var(prob_param_map, (11, 12, 15))
+# implement the control loop
 
-# as cvxpy is a convex optimization library we must use these auxiliarly
-# variables as replacement for sin(theta) and cos(theta)
-# NOTE: given theta is a parameter set at each controller update step we can do
-# this without loss of convexity with respect to optimization variables u_f, u_t
-(sin_theta_aux_par, cos_theta_aux_par) = get_param_var(prob_param_map, (7, 4))
-
-# set the relative importance for each error
-
-alpha_par.value = 1.0  # distance loss
-beta_par.value = 1.0  # angle loss
-
-p_par.value = 0.2
-
-# gamma_par.value = 1e-3  # IGNORE: velocity loss
-# delta_par.value = 1e-3  # IGNORE: angular velocity loss
-
-traj, t  = generate_spline(t_f,
-     dt=dt, spline_type="cubic")
-
-traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta = traj
-
-p0 = np.array([0.0, 0.0, np.pi / 2, 0.0, 0.0])  # pointing upwards
-u0 = np.array([0.0, 0.0])
-
-
-print([param.value for param in cntrl_prob_cvxpy.parameters()])
-print(cntrl_prob_cvxpy.parameters()[0] is alpha_par)
-
-
-def dyn_unicycle_f(t, p, u):
-    x, y, theta, v, omega = p
-    u_f, u_t = u
-
-    dot_state = np.array([v * np.cos(theta), v * np.sin(theta), omega, u_f, u_t])
-    return dot_state
-
+# p0 = np.array([0.0, 0.0, np.pi / 2, 0.0, 0.0])  # pointing straight up
 
 p_hist = []
 u_hist = []
 
-p = p0
-u = u0
+p_curr = p0
+u_curr = u0
 
-for i in range(len(t)):
-    # generate controller input form the optimal controller
+num_mpc_steps = 5
 
-    p_hist.append(p)
-    u_hist.append(u)
+for i in range(num_samples):
+    t_curr = t[i]
 
-    # gets the current state
-    x_curr, y_curr, theta_curr, v_curr, omega_curr = p
-
-    # gets the current trajectory state
-    traj_x_curr, traj_y_curr, traj_theta_curr = (traj_x[i], traj_y[i], traj_theta[i])
-    print(f"Traj x: {traj_x_curr}, traj y: {traj_y}")
-    dot_traj_x_curr, dot_traj_y_curr, dot_traj_theta_curr = (
-        dot_traj_x[i],
-        dot_traj_y[i],
-        dot_traj_theta[i],
+    # generate the next control action
+    u_optimal, _ = gen_mpc_controls(
+        t_curr,
+        p_curr,
+        num_mpc_steps,
+        0.25,  # use smaller steps
+        u_curr,  # uses the previous controls as a guess for the next one
+        DynExtUnicycleMCPParams,
+        dyn_ext_unicycle_model_step,
+        dyn_ext_unicycle_cost,
     )
 
-    # set parameters of the optimization problem
+    # update the histories with the current state and control input before
+    # advancing to the next time step
+    p_hist.append(p_curr)
+    u_hist.append(u_optimal)
 
-    x_par.value = x_curr
-    y_par.value = y_curr
-    theta_par.value = theta_curr
-    v_par.value = v_curr
-    omega_par.value = omega_curr
+    print(f"t: {t_curr}, state: {p_curr}, u_optimal: {u_optimal}")
 
-    x_traj_par.value = traj_x_curr
-    y_traj_par.value = traj_y_curr
-    theta_traj_par.value = traj_theta_curr
-    # v_traj_par.value = 0.0  # not generated and error gain disabled
-    # omega_traj_par.value = 0.0  # not generated and error gain disabled
+    # update the model with the optimal control
+    p_curr = dyn_ext_unicycle_model_step(
+        t_curr, dt, p_curr, u_optimal, DynExtUnicycleMCPParams
+    )
 
-    dot_x_traj_par.value = dot_traj_x_curr
-    dot_y_traj_par.value = dot_traj_y_curr
-    dot_theta_traj_par.value = dot_traj_theta_curr
-    # dot_v_traj_par.value = 0.0  # not generated and error gain disabled
-    # dot_omega_traj_par.value = 0.0  # not generated and error gain disabled
-
-    print([param.value for param in cntrl_prob_cvxpy.parameters()])
-
-    # set the auxiliary variables
-    sin_theta_aux_par.value = np.sin(theta_curr)
-    cos_theta_aux_par.value = np.cos(theta_curr)
-
-    # run optimization
-
-    cntrl_prob_cvxpy.solve(warm_start=True)
-    print(cntrl_prob_cvxpy.constraints[0].value())
-
-    u_f_optim = u_f_var.value
-    u_t_optim = u_t_var.value
-    delta_optim = delta_var.value
-
-    print(f"u_f: {u_f_optim}, u_t: {u_t_optim}, delta: {delta_optim}")
-
-    u = np.array([u_f_optim, u_t_optim])
-
-    # update history
-
-    # run dynamics (zero order hold on dynamics for dt)
-    result = solve_ivp(lambda t, y: dyn_unicycle_f(t, y, u=u), [0, dt], p)
-    print(result.y)
-
-    p = result.y[:, -1]
-    # x_curr, y_curr, theta_curr, v_curr, omega_curr = p
-
-    if i > 2000:
+    if i > 250:
         break
+
+
+
 
 p_hist = np.array(p_hist)
 u_hist = np.array(u_hist)
 
-fig, ax = plt.subplots()
+step = 10
+indices = np.arange(0, len(p_hist), step)
 
-ax.plot(p_hist[:, 0], p_hist[:, 1])
-ax.plot(traj_x, traj_y)
+plt.subplot(2, 2, 1)
+plt.plot(p_hist[:, 0], p_hist[:, 1], label = "actual")
+plt.plot(x_traj, y_traj, label = "ideal")
+plt.ylabel("Y Position")
+plt.xlabel("X Position")
+
+# 2. Add dots that change color over time
+# 'c=indices' tells matplotlib to color based on the time step
+# 'cmap' defines the color gradient (e.g., 'viridis', 'plasma', 'jet')
+scatter_actual = plt.scatter(p_hist[indices, 0], p_hist[indices, 1], 
+                             c=indices, cmap='viridis', s=20, label="actual dots", zorder=3)
+
+scatter_ideal = plt.scatter(x_traj[indices], y_traj[indices], 
+                            c=indices, cmap='viridis', s=20, marker='x', label="ideal dots", zorder=3)
+
+# Optional: Add a colorbar to show time progression
+# plt.colorbar(scatter_actual, label="Time Step")
+plt.title("Trajectory")
+plt.legend()
+
+# Plot 2
+ax1 = plt.subplot(2, 2, 2)
+angle_deg = np.degrees(p_hist[:, 2])  # Convert radians to degrees for better visualization
+
+# Plot Angle on the Left Y-axis
+color1 = 'tab:blue'
+ax1.set_xlabel('Time Steps')
+ax1.set_ylabel('Angle (deg)', color=color1)
+ax1.plot(angle_deg, color=color1, linewidth=2)
+ax1.tick_params(axis='y', labelcolor=color1)
+ax1.set_title("Angle & Velocity")
+ax2 = ax1.twinx() 
+
+# Plot Velocity on the Right Y-axis
+color2 = 'tab:red'
+ax2.set_ylabel('Velocity', color=color2)
+ax2.plot(p_hist[:, 3], color=color2, linewidth=2)
+ax2.tick_params(axis='y', labelcolor=color2)
+
+
+# Plot 3: forces and torques
+ax1 = plt.subplot(2, 2, 3)
+
+# Plot Angle on the Left Y-axis
+color1 = 'tab:blue'
+ax1.set_xlabel('Time Steps')
+ax1.set_ylabel('Torque', color=color1)
+ax1.plot(u_hist[:, 1], color=color1, linewidth=2) #force
+ax1.tick_params(axis='y', labelcolor=color1)
+ax1.set_title("Force and Torque")
+ax2 = ax1.twinx() 
+
+# Plot Velocity on the Right Y-axis
+color2 = 'tab:red'
+ax2.set_ylabel('Force', color=color2)
+ax2.plot(u_hist[:, 0], color=color2, linewidth=2)
+ax2.tick_params(axis='y', labelcolor=color2)
 
 
 
-fig, ax = plt.subplots()
-ax.plot(u_hist[1])
-# ax.set_yscale('log')
+#plot 4, distance error
+plt.subplot(2, 2, 4)
+size_index = len(p_hist) 
+dx = x_traj[:size_index] - p_hist[:, 0]
+dy = y_traj[:size_index] - p_hist[:, 1]
+dist_error = np.sqrt(dx**2 + dy**2)
+plt.plot (dist_error )
+plt.title("Position Error")
+plt.ylabel("Position Error")
+plt.xlabel("Time Steps")
 
-plt.show()
+plt.tight_layout()
+# plt.show()
+
+print(u_hist[-1])
+
 
 filepath = ""
 # x_curr, y_curr, theta_curr, v_curr, omega_curr = p_hist
-traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta = traj
-traj = np.column_stack((traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta))
-
-# save_data_to_file(filepath,t ,traj, p_hist, u_hist, dt)
+# traj_x, traj_y, traj_theta, dot_traj_x, dot_traj_y, dot_traj_theta = traj
+traj = np.column_stack((x_traj, y_traj, theta_traj, x_dot_traj, y_dot_traj, dot_theta_traj))
+print("traj shape",traj.shape)
+save_data_to_file(filepath,traj, p_hist, u_hist, dt)
 
 
 # # plot the error history of the controller over time
