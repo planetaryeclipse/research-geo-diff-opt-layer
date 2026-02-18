@@ -167,3 +167,49 @@ class ProdDiffMfldOptimProblem(Function):
         )
 
         return grad_output * soln_map_jacob
+
+
+class ProdDiffMfldOptimLayer(Module):
+    def __init__(
+        self,
+        f: ProdOptimFunc,
+        gs: List[ProdOptimFunc],
+        hs: List[ProdOptimFunc],
+        optim_mfld_cfg: MfldCfg,
+        prod_mfld_conn: Connection,
+        solve_cfg: ConstrainedSolverCfg,
+        method: ConstrainedSolverMethod,
+    ):
+        super().__init__()
+        self.f = f
+        self.gs = gs
+        self.hs = hs
+        self.optim_mfld_cfg = optim_mfld_cfg
+        self.prod_mfld_conn = prod_mfld_conn
+        self.solve_cfg = solve_cfg
+        self.method = method
+
+    def forward(
+        self,
+        p0: torch.Tensor,
+        q: torch.Tensor,
+        _v: torch.Tensor = None,
+        *func_args: *FuncArgs,
+    ):
+        # NOTE: at time of writing the velocity on the external manifold _v is
+        # currently unused and is therefore left undefined (but keeping as part
+        # of the API for convenience)
+
+        p_optimal = ProdDiffMfldOptimProblem.apply(
+            p0,
+            q,
+            _v,
+            self.f,
+            self.gs,
+            self.hs,
+            self.optim_mfld_cfg,
+            self.prod_mfld_conn,
+            self.solve_cfg,
+            self.method,
+        )
+        return p_optimal
