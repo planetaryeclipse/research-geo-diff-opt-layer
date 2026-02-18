@@ -1,5 +1,6 @@
 import numpy as np
-from typing import Callable, Tuple, List, Union, overload
+from typing import Callable, Tuple, List, Union, overload, Any, TypeVarTuple
+
 
 from enum import Enum
 
@@ -40,6 +41,10 @@ def dist_squared_map(p, q, cfg: MfldCfg) -> torch.tensor:
     )
 
 
+FuncArgs = TypeVarTuple("FuncArgs")
+OptimFunc = Callable[[torch.Tensor, MfldCfg, *FuncArgs], torch.Tensor]
+
+
 @dataclass
 class SolverCfg:
     conv_eps = 1e-6
@@ -56,13 +61,17 @@ class SolverResult:
 
 
 def riem_grad_descent(
-    f, p0, mfld_cfg: MfldCfg, solv_cfg: SolverCfg, *args
+    f: OptimFunc,
+    p0: torch.Tensor,
+    mfld_cfg: MfldCfg,
+    solv_cfg: SolverCfg,
+    *args: *FuncArgs,
 ) -> SolverResult:
     # standard optimization algorithm (for us this will act as one of the
     # available subsolvers to be used by ralm)
 
     p_prev = None
-    p: torch.tensor = p0
+    p: torch.Tensor = p0
 
     for i in range(solv_cfg.max_iters):
         # the jacobian takes too long so we abuse backward propagation here to
@@ -104,8 +113,15 @@ def riem_grad_descent(
 class SubsolverMethod(Enum):
     RIEM_GRAD_DESCENT = riem_grad_descent
 
-    def __call__(self, *vars):
-        self.value(*vars)
+    def __call__(
+        self,
+        f: OptimFunc,
+        p0: torch.Tensor,
+        mfld_cfg: MfldCfg,
+        solve_cfg: SolverCfg,
+        *args: *FuncArgs,
+    ):
+        self.value(f, p0, mfld_cfg, solve_cfg, *args)
 
 
 @dataclass
@@ -164,7 +180,15 @@ def _constraints_violated(p, gs, hs, mfld_cfg: MfldCfg, eq_eps, *args):
     return constr_violated, gs_eval, hs_eval
 
 
-def ralm(f, gs, hs, p0, mfld_cfg: MfldCfg, solve_cfg: ConstrainedSolverCfg, *args):
+def ralm(
+    f: OptimFunc,
+    gs: List[OptimFunc],
+    hs: List[OptimFunc],
+    p0: torch.Tensor,
+    mfld_cfg: MfldCfg,
+    solve_cfg: ConstrainedSolverCfg,
+    *args: *FuncArgs,
+):
     if solve_cfg.sub_cfg is None:
         raise ValueError("Subsolver configuration must be provided to use RALM")
 
@@ -287,6 +311,22 @@ def ralm(f, gs, hs, p0, mfld_cfg: MfldCfg, solve_cfg: ConstrainedSolverCfg, *arg
         gs_eval,
         hs_eval,
     )
+
+
+class ConstrainedSolverMethod(Enum):
+    RALM = ralm
+
+    def __call__(
+        self,
+        f: OptimFunc,
+        gs: List[OptimFunc],
+        hs: List[OptimFunc],
+        p0: torch.Tensor,
+        mfld_cfg: MfldCfg,
+        solve_cfg: ConstrainedSolverCfg,
+        *func_args: *FuncArgs,
+    ):
+        self.value(f, gs, hs, p0, mfld_cfg, solve_cfg, *func_args)
 
 
 def test_riem_grad_descent():

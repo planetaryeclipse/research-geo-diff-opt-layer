@@ -1,0 +1,157 @@
+import torch
+import itertools
+
+from torch.func import jacrev
+from torch.autograd.function import Function
+from torch.nn import Module
+
+from optimizer import (
+    MfldCfg,
+    ConstrainedSolverCfg,
+    ConstrainedSolverMethod,
+    ConstrainedSolverResult,
+    OptimFunc,
+    FuncArgs,
+)
+
+from typing import List
+
+
+class DiffMfldOptimProblem(Function):
+    @staticmethod
+    def forward(
+        ctx,
+        p0: torch.Tensor,  # starting point on manifold
+        f: OptimFunc,  # cost function
+        gs: List[OptimFunc],  # inequality constraint functions
+        hs: List[OptimFunc],  # equality constraint functions
+        mfld_cfg: MfldCfg,
+        solve_cfg: ConstrainedSolverCfg,
+        method: ConstrainedSolverMethod,
+        *func_args: *FuncArgs,  # additional args provided the f, g, h
+    ):
+        # performs constrained optimization (using chosen solver)
+
+        result: ConstrainedSolverResult = method(
+            f, gs, hs, p0, mfld_cfg, solve_cfg, *func_args
+        )
+        if not result.success:
+            raise ValueError(
+                f"Differentiable manifold optimization layer failed to "
+                "converge to a solution: {result}"
+            )
+        p_optimal = result.p
+
+        # offloads computing the jacobian of the solution map for use in
+        # backpropagation to the backwards pass given the high cost
+
+        ctx.save_for_backward(p0)
+        ctx.save_for_backward(p_optimal)
+
+        ctx.f = f
+        ctx.gs = gs
+        ctx.g_mults = result.g_mults
+        ctx.g_vals = result.gs_eval
+        ctx.mfld_cfg = mfld_cfg
+        ctx.func_args = func_args
+
+        # final result is the optimized point
+        return p_optimal
+
+    @staticmethod
+    def backward(ctx, grad_output):
+
+        (p, p_optimal) = ctx.saved_tensors
+        (f, gs, g_mults, g_vals, mfld_cfg, func_args) = (
+            ctx.f,  # cost function
+            ctx.gs,  # inequality functions
+            ctx.g_mults,  # lagrangian multipliers of inequality constraints
+            ctx.g_vals,  # value of inequality constraints
+            ctx.mfld_cfg,  # manifold configuration (connection, metric, etc.)
+            ctx.func_args,  # additional args for cost and constraints
+        )
+
+        conn_coeffs_p = mfld_cfg.conn(p)
+        v_p = mfld_cfg.log_method(p, p_optimal, mfld_cfg.conn)
+
+        conn_coeffs_p_optimal = mfld_cfg.conn(p_optimal)
+        g_inv_p_optimal = mfld_cfg.metric_field(p_optimal).inv()
+
+        # various partial derivatives needed
+        f_lambda_fn = lambda p: f(p, mfld_cfg, *func_args)
+        g_lambda_fns = [lambda p: g(p, mfld_cfg, *func_args) for g in gs]
+
+        # using jacrev composition over hessian for speed (although given this
+        # is only run once per inference then we don't need the full speed that
+        # is possible to be achieved through the backpropagation trick)
+        partial_f = jacrev(f_lambda_fn)(p_optimal)
+        hessian_f = jacrev(jacrev(f_lambda_fn))(p_optimal)
+
+        partial_gs = [jacrev(g)(p_optimal) for g in g_lambda_fns]
+        hessian_gs = [jacrev(jacrev(g))(p_optimal) for g in g_lambda_fns]
+
+        n = p.shape[0]  # dimension of optimization manifold
+        s = len(gs)  # number of inequality constraints
+
+        soln_map_jacob = torch.zeros((n, n))
+        for j, k in itertools.product(range(n), range(n)):
+            # original solution map dual (before adding parallel transport)
+            soln_map_dual_coeff = hessian_f - torch.tensordot(
+                partial_f, conn_coeffs_p_optimal, (0, 0)
+            )
+            for i in range(s):
+                partial_g = partial_gs[i]
+                hessian_g = hessian_gs[i]
+
+                soln_map_dual_coeff += (
+                    -g_mults[i] / g_vals[i] * partial_g[j] * partial_g[k]
+                    + g_mults[i] * hessian_g
+                    - torch.tensordot(partial_g, conn_coeffs_p_optimal, (0, 0))
+                )
+
+            # parallel transport component (note that we pulled the negative
+            # back on this component for consistency with labelling)
+            parallel_transp_coeff = -torch.tensordot(conn_coeffs_p, v_p, (1, 0))
+
+            # computes the final coefficient
+            coeff = torch.tensordot(
+                g_inv_p_optimal,
+                torch.tensordot(soln_map_dual_coeff, parallel_transp_coeff, (1, 0)),
+                (1, 1),
+            )
+
+            soln_map_jacob[j, k] = coeff
+
+        return grad_output * soln_map_jacob
+
+
+class DiffMfldOptimLayer(Module):
+    def __init__(
+        self,
+        f: OptimFunc,
+        gs: List[OptimFunc],
+        hs: List[OptimFunc],
+        mfld_cfg: MfldCfg,
+        solve_cfg: ConstrainedSolverCfg,
+        method: ConstrainedSolverMethod,
+    ):
+        super().__init__()
+        self.f = f
+        self.gs = gs
+        self.hs = hs
+        self.mfld_cfg = mfld_cfg
+        self.solve_cfg = solve_cfg
+        self.method = method
+
+    def forward(self, p0: torch.Tensor, *func_args: *FuncArgs):
+        p_optimal = DiffMfldOptimProblem.apply(
+            p0,
+            self.f,
+            self.gs,
+            self.hs,
+            self.mfld_cfg,
+            self.solve_cfg,
+            self.method,
+            *func_args,
+        )
+        return p_optimal
