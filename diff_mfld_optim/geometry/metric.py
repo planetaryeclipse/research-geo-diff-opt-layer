@@ -1,14 +1,10 @@
-import numpy as np
 import torch
-
-from abc import abstractmethod
-from connection import Connection
-
 import inspect
 import itertools
 
-from torch.func import jacfwd, jacrev
-from torch.autograd.functional import jacobian
+from torch.func import jacrev
+
+from diff_mfld_optim.geometry.connection import Connection
 
 
 def _coords(p):

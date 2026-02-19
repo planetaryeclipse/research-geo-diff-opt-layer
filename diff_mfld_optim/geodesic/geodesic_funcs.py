@@ -4,9 +4,12 @@ import torch
 import numpy as np
 from torch.autograd.function import Function
 
-from approx_geod_so import _solve_geod_pos_so, _solve_initial_geod_vel_so
-from metric import MetricField, LeviCivitaConnection
-from connection import Connection
+from diff_mfld_optim.geodesic.approx_geod_so import (
+    _solve_geod_pos_so,
+    _solve_initial_geod_vel_so,
+)
+from diff_mfld_optim.geometry.metric import MetricField, LeviCivitaConnection
+from diff_mfld_optim.geometry.connection import Connection
 
 # wrapper functions for approximate methods
 

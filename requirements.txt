@@ -1,3 +1,4 @@
+# external libraries
 numba
 numpy
 matplotlib
@@ -9,3 +10,6 @@ sortedcontainers
 torch
 optnet
 cvxpylayers
+
+# editable internal libraries
+-e ./diff_mfld_optim

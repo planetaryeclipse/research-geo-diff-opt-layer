@@ -1,127 +1,18 @@
-import numpy as np
-from typing import Callable, Tuple, List, Union, overload, Any, TypeVarTuple
-
+import torch
 
 from enum import Enum
-
-import torch
-from torch.autograd.functional import jacobian
-from torch.func import jacrev, jacfwd, grad
-
-from geodesic_funcs import (
-    ExpMethod,
-    LogMethod,
-    dist_map,
-)
-import geodesic_funcs
-from metric import MetricField, Metric, MetricView, RnMetricField
-from connection import Connection
-
 from dataclasses import dataclass
+from typing import Union, List, Tuple
 
-from geodesic_funcs import DistSquaredMap
-
-from time import time
-
-
-@dataclass
-class MfldCfg:
-    metric_field: MetricField
-    conn: Connection
-
-    exp_method: ExpMethod = ExpMethod.APPROX_SO
-    log_method: LogMethod = LogMethod.APPROX_SO
-    dist_method: LogMethod = LogMethod.APPROX_SO
-
-
-def dist_squared_map(p, q, cfg: MfldCfg) -> torch.tensor:
-    # allows clean mfldcfg interface for use in cost and constraint functions
-    return geodesic_funcs.dist_squared_map(
-        p, q, cfg.metric_field, cfg.conn, cfg.dist_method
-    )
-
-
-FuncArgs = TypeVarTuple("FuncArgs")
-OptimFunc = Callable[[torch.Tensor, MfldCfg, *FuncArgs], torch.Tensor]
-
-
-@dataclass
-class SolverCfg:
-    conv_eps = 1e-6
-    damp = 0.6
-    damp_growth = 0.95  # decays (helps with eventual convergence)
-    max_iters = 1000
-
-
-@dataclass
-class SolverResult:
-    success: bool
-    iters: int
-    p: torch.tensor
-
-
-def riem_grad_descent(
-    f: OptimFunc,
-    p0: torch.Tensor,
-    mfld_cfg: MfldCfg,
-    solv_cfg: SolverCfg,
-    *args: *FuncArgs,
-) -> SolverResult:
-    # standard optimization algorithm (for us this will act as one of the
-    # available subsolvers to be used by ralm)
-
-    p_prev = None
-    p: torch.Tensor = p0
-
-    for i in range(solv_cfg.max_iters):
-        # the jacobian takes too long so we abuse backward propagation here to
-        # compute the differential of f (the gradient according to torch is
-        # equivalent to differential in differential geometric terms)
-        p.requires_grad = True
-        p.grad = None
-
-        f(p, mfld_cfg, *args).backward()
-        df = p.grad.detach()
-
-        p.requires_grad = False
-
-        # updates the point using the exponential map
-        grad_f = mfld_cfg.metric_field(p).sharp(df)
-        p = mfld_cfg.exp_method(p, -solv_cfg.damp * grad_f, mfld_cfg.conn)
-
-        if (
-            p_prev is not None
-            and dist_map(
-                p,
-                p_prev,
-                mfld_cfg.metric_field,
-                mfld_cfg.conn,
-                mfld_cfg.dist_method,
-            )
-            <= solv_cfg.conv_eps
-        ):
-            return SolverResult(True, i + 1, p)
-
-        p_prev = p.clone()  # otherwise it p == p_prev
-
-        if solv_cfg.damp_growth is not None:
-            solv_cfg.damp *= solv_cfg.damp_growth
-
-    return SolverResult(False, solv_cfg.max_iters, p)
-
-
-class SubsolverMethod(Enum):
-    RIEM_GRAD_DESCENT = riem_grad_descent
-
-    def __call__(
-        self,
-        f: OptimFunc,
-        p0: torch.Tensor,
-        mfld_cfg: MfldCfg,
-        solve_cfg: SolverCfg,
-        *args: *FuncArgs,
-    ):
-        self.value(f, p0, mfld_cfg, solve_cfg, *args)
+from diff_mfld_optim.optim.subsolver import (
+    SubsolverMethod,
+    SolverCfg,
+    SolverResult,
+    OptimFunc,
+    FuncArgs,
+)
+from diff_mfld_optim.geodesic.geodesic_funcs import dist_map
+from diff_mfld_optim.mfld_util import MfldCfg
 
 
 @dataclass
@@ -207,7 +98,7 @@ def ralm(
         # finds the point that minimizes the augmented lagrangian function with
         # with the current lagrangian multipliers
 
-        alf_result = solve_cfg.sub_method(
+        alf_result: SolverResult = solve_cfg.sub_method(
             lambda p, mfld_cfg, *args: _ralm_subproblem(
                 p, solve_cfg.penalty, f, gs, hs, g_mults, h_mults, mfld_cfg, *args
             ),
@@ -327,65 +218,3 @@ class ConstrainedSolverMethod(Enum):
         *func_args: *FuncArgs,
     ):
         self.value(f, gs, hs, p0, mfld_cfg, solve_cfg, *func_args)
-
-
-def test_riem_grad_descent():
-    p = torch.tensor([1.0, 2.0])
-    q = torch.tensor([4.0, -1.0])
-
-    def f(p, cfg: MfldCfg, q):
-        return 0.5 * dist_squared_map(p, q, cfg)
-
-    g = RnMetricField(2)
-    mfld_cfg = MfldCfg(g, g.christoffels())
-    solv_cfg = SolverCfg()
-
-    result = riem_grad_descent(f, p, mfld_cfg, solv_cfg, q)
-
-    print(f"riem result: {result}")
-
-
-def test_ralm():
-    # NOTE: from testing it seems that generally we want the penalty growth
-    # to be larger than the decay rate of the subsolver (seems to sometimes
-    # get stuck at a position that violates constraints if we decay too quickly)
-
-    p = torch.tensor([-2.0, 0.0])
-    q = torch.tensor([0.0, 0.0])  # want to approach this point
-
-    c = torch.tensor([2.0, 0.0])  # circle centerd on opposite side of p
-    rad = 1.0
-
-    def f(p, cfg: MfldCfg, q, c, rad):
-        return 0.5 * dist_squared_map(p, q, cfg)
-
-    def g(p, cfg: MfldCfg, q, c, rad):
-        # all g must be defined such that g(p) <= 0
-        return dist_squared_map(p, c, cfg) - rad**2
-
-    metric_field = RnMetricField(2)
-    conn = metric_field.christoffels()
-
-    # warm start the functions
-    # print(metric_field(p))
-    # print(conn(p))
-
-    mfld_cfg = MfldCfg(metric_field, conn)
-    constr_solv_cfg = ConstrainedSolverCfg(
-        SubsolverMethod.RIEM_GRAD_DESCENT, SolverCfg()
-    )
-
-    # TODO: improve this optimization time (likely recomputing values so can
-    # likely implement caching somewhere in the architecture)
-
-    start_time = time()
-    result = ralm(f, [g], [], p, mfld_cfg, constr_solv_cfg, q, c, rad)
-    end_time = time()
-
-    print(f"ralm result: {result}")
-    print(f"time: {end_time - start_time}")
-
-
-if __name__ == "__main__":
-    # test_riem_grad_descent()
-    test_ralm()

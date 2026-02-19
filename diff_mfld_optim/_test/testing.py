@@ -1,4 +1,4 @@
-from metric import MetricField
+from geometry.metric import MetricField
 import torch
 
 u_metric = MetricField(

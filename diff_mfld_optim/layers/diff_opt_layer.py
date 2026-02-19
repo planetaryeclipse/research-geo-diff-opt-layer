@@ -1,18 +1,16 @@
 import torch
-import itertools
 
 from torch.func import jacrev
 from torch.autograd.function import Function
 from torch.nn import Module
 
-from optimizer import (
-    MfldCfg,
+from diff_mfld_optim.optim.subsolver import OptimFunc, FuncArgs
+from diff_mfld_optim.optim.constrained import (
     ConstrainedSolverCfg,
     ConstrainedSolverMethod,
     ConstrainedSolverResult,
-    OptimFunc,
-    FuncArgs,
 )
+from diff_mfld_optim.mfld_util import MfldCfg
 
 from typing import List
 

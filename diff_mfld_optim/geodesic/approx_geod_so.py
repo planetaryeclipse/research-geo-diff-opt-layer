@@ -6,8 +6,8 @@ from enum import Enum
 from aenum import member
 from scipy.optimize import root
 
-from metric import RnMetricField
-from connection import Connection
+from diff_mfld_optim.geometry.metric import RnMetricField
+from diff_mfld_optim.geometry.connection import Connection
 
 from typing import Tuple
 
