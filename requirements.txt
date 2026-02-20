@@ -10,6 +10,8 @@ sortedcontainers
 torch
 optnet
 cvxpylayers
+h5py
+tqdm
 
-# editable internal libraries
 -e ./diff_mfld_optim
+-e ./geo_diff_opt_layer_ml

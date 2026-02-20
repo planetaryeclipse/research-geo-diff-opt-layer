@@ -1,5 +1,5 @@
 [project]
-name = "diff_mfld_optim"
+name = "geo_diff_opt_layer_ml"
 version = "0.1.0"
 
 [build-system]
@@ -9,4 +9,4 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 # root folder specification to be usable in jupyter notebooks
 where = [".."]
-include = ["diff_mfld_optim*"]
+include = ["geo_diff_opt_layer_ml*"]
