@@ -4,6 +4,9 @@ from torch.func import jacrev
 from torch.autograd.function import Function
 from torch.nn import Module
 
+from multiprocessing.pool import Pool
+from typing import List, Tuple, Any, Optional
+
 from diff_mfld_optim.optim.subsolver import OptimFunc, FuncArgs
 from diff_mfld_optim.optim.constrained import (
     ConstrainedSolverCfg,
@@ -11,8 +14,6 @@ from diff_mfld_optim.optim.constrained import (
     ConstrainedSolverResult,
 )
 from diff_mfld_optim.mfld_util import MfldCfg
-
-from typing import List
 
 
 class DiffMfldOptimProblem(Function):
@@ -137,15 +138,69 @@ class DiffMfldOptimLayer(Module):
         self.solve_cfg = solve_cfg
         self.method = method
 
-    def forward(self, p0: torch.Tensor, *func_args: *FuncArgs):
-        p_optimal = DiffMfldOptimProblem.apply(
-            p0,
-            self.f,
-            self.gs,
-            self.hs,
-            self.mfld_cfg,
-            self.solve_cfg,
-            self.method,
-            *func_args,
-        )
-        return p_optimal
+    def forward(
+        self,
+        p0: torch.Tensor,  # initial point on manifold
+        batched_args: Tuple[torch.Tensor],  # arguments to apply batching rules to
+        args: tuple[Any],  # arguments passed as-in to optim problem
+        pool: Optional[Pool],  # multiprcoessing pool to speed up batching
+    ):
+        is_batched = len(p0.shape) > 1
+        if not is_batched:
+            p_optimal = DiffMfldOptimProblem.apply(
+                p0,
+                self.f,
+                self.gs,
+                self.hs,
+                self.mfld_cfg,
+                self.solve_cfg,
+                self.method,
+                *batched_args,
+                *args,
+            )
+            return p_optimal
+
+        # have to handle the multiprocessing case where the batched arguments
+        # are indexed along their first dimension and fed to separate instances
+        # of the optimization problem
+        num_batches = p0.shape[0]
+        p_optimal_batched = torch.zeros_like(p0)
+
+        if not is_batched:
+            for i in range(num_batches):
+                p_optimal_batched[i, :] = DiffMfldOptimProblem.apply(
+                    p0[i, :],
+                    self.f,
+                    self.gs,
+                    self.hs,
+                    self.mfld_cfg,
+                    self.solve_cfg,
+                    self.method,
+                    *[arg[i, :] for arg in batched_args],
+                    *args,
+                )
+        else:
+            # solves the optimization problem for all the batches included in
+            # the inputs using the multiprocessing pool for maximum speed
+            p_optimal_results = pool.imap(
+                DiffMfldOptimProblem.apply,
+                [
+                    (
+                        p0[i, :],
+                        self.f,
+                        self.gs,
+                        self.hs,
+                        self.mfld_cfg,
+                        self.solve_cfg,
+                        self.method,
+                        *[arg[i, :] for arg in batched_args],
+                        *args,
+                    )
+                    for i in range(num_batches)
+                ],
+            )
+
+            # combines the results into the batched output
+            for i in range(num_batches):
+                p_optimal_batched[i, :] = p_optimal_results[i]
+        return p_optimal_batched

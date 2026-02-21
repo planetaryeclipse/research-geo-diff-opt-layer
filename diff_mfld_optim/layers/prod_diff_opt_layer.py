@@ -4,6 +4,9 @@ from torch.func import jacrev
 from torch.autograd.function import Function
 from torch.nn import Module
 
+from multiprocessing.pool import Pool
+from typing import List, Tuple, Any, Optional
+
 from diff_mfld_optim.mfld_util import MfldCfg
 from diff_mfld_optim.optim.subsolver import OptimFunc, FuncArgs
 from diff_mfld_optim.optim.constrained import (
@@ -191,23 +194,80 @@ class ProdDiffMfldOptimLayer(Module):
         self,
         p0: torch.Tensor,
         q: torch.Tensor,
-        _v: torch.Tensor = None,
-        *func_args: *FuncArgs,
+        batched_args: Tuple[torch.Tensor],  # arguments to apply batching rules to
+        args: tuple[Any],  # arguments passed as-in to optim problem
+        pool: Optional[Pool],  # multiprcoessing pool to speed up batching
+        _v: torch.Tensor = None,  # velocity on the non-optimization manifold (unused)
     ):
         # NOTE: at time of writing the velocity on the external manifold _v is
         # currently unused and is therefore left undefined (but keeping as part
         # of the API for convenience)
 
-        p_optimal = ProdDiffMfldOptimProblem.apply(
-            p0,
-            q,
-            _v,
-            self.f,
-            self.gs,
-            self.hs,
-            self.optim_mfld_cfg,
-            self.prod_mfld_conn,
-            self.solve_cfg,
-            self.method,
-        )
-        return p_optimal
+        is_batched = len(p0.shape) > 1
+        if not is_batched:
+            p_optimal = ProdDiffMfldOptimProblem.apply(
+                p0,
+                q,
+                _v,
+                self.f,
+                self.gs,
+                self.hs,
+                self.optim_mfld_cfg,
+                self.prod_mfld_conn,
+                self.solve_cfg,
+                self.method,
+                *batched_args,
+                *args,
+            )
+            return p_optimal
+
+        # have to handle the multiprocessing case where the batched arguments
+        # are indexed along their first dimensiona dn fed to separate instances
+        # of the optimization problem
+        num_batches = p0.shape[0]
+        p_optimal_batched = torch.zeros_like(p0)
+
+        if not is_batched:
+            for i in range(num_batches):
+                p_optimal_batched[i, :] = ProdDiffMfldOptimLayer.apply(
+                    p0[i, :],
+                    q[i, :],
+                    _v[i, :] if _v is not None else None,
+                    self.f,
+                    self.gs,
+                    self.hs,
+                    self.optim_mfld_cfg,
+                    self.prod_mfld_conn,
+                    self.solve_cfg,
+                    self.method,
+                    *[arg[i, :] for arg in batched_args],
+                    *args,
+                )
+        else:
+            # solves the optimization problem for all the batches included in
+            # the inputs using the multiprocessing pool for maximum speed
+            p_optimal_results = pool.imap(
+                ProdDiffMfldOptimLayer.apply,
+                [
+                    (
+                        p0[i, :],
+                        q[i, :],
+                        _v[i, :] if _v is not None else None,
+                        self.f,
+                        self.gs,
+                        self.hs,
+                        self.optim_mfld_cfg,
+                        self.prod_mfld_conn,
+                        self.solve_cfg,
+                        self.method,
+                        *[arg[i, :] for arg in batched_args],
+                        *args,
+                    )
+                    for i in range(num_batches)
+                ],
+            )
+
+            # combines the results into the batched output
+            for i in range(num_batches):
+                p_optimal_batched[i, :] = p_optimal_results[i]
+        return p_optimal_batched
