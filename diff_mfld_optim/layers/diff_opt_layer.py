@@ -166,7 +166,7 @@ class DiffMfldOptimLayer(Module):
         num_batches = p0.shape[0]
         p_optimal_batched = torch.zeros_like(p0)
 
-        if not is_batched:
+        if pool is None:
             for i in range(num_batches):
                 p_optimal_batched[i, :] = DiffMfldOptimProblem.apply(
                     p0[i, :],
@@ -182,22 +182,24 @@ class DiffMfldOptimLayer(Module):
         else:
             # solves the optimization problem for all the batches included in
             # the inputs using the multiprocessing pool for maximum speed
-            p_optimal_results = pool.imap(
-                DiffMfldOptimProblem.apply,
-                [
-                    (
-                        p0[i, :],
-                        self.f,
-                        self.gs,
-                        self.hs,
-                        self.mfld_cfg,
-                        self.solve_cfg,
-                        self.method,
-                        *[arg[i, :] for arg in batched_args],
-                        *args,
-                    )
-                    for i in range(num_batches)
-                ],
+            p_optimal_results = list(
+                pool.imap(
+                    DiffMfldOptimProblem.apply,
+                    [
+                        (
+                            p0[i, :],
+                            self.f,
+                            self.gs,
+                            self.hs,
+                            self.mfld_cfg,
+                            self.solve_cfg,
+                            self.method,
+                            *[arg[i, :] for arg in batched_args],
+                            *args,
+                        )
+                        for i in range(num_batches)
+                    ],
+                )
             )
 
             # combines the results into the batched output

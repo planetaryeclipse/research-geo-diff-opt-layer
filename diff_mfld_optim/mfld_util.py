@@ -7,8 +7,9 @@ from diff_mfld_optim.geometry.connection import Connection
 from diff_mfld_optim.geodesic.geodesic_funcs import (
     ExpMethod,
     LogMethod,
-    dist_squared_map,
 )
+
+import diff_mfld_optim.geodesic.geodesic_funcs as geodesic_funcs
 
 
 @dataclass
@@ -26,4 +27,6 @@ class MfldCfg:
 
 def dist_squared_map(p, q, cfg: MfldCfg) -> torch.tensor:
     # allows clean mfldcfg interface for use in cost and constraint functions
-    return dist_squared_map(p, q, cfg.metric_field, cfg.conn, cfg.dist_method)
+    return geodesic_funcs.dist_squared_map(
+        p, q, cfg.metric_field, cfg.conn, cfg.dist_method
+    )

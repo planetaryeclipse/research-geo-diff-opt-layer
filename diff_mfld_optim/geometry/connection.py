@@ -19,9 +19,9 @@ class Connection(ABC):
     def _eval(self, p):
         pass
 
-    def __call__(self, *coords):
+    def __call__(self, *coords_sets):
         # in the case of product manifolds then we merge the coordinates
-        p = torch.cat(*coords, dim=0)
+        p = torch.cat(tuple(coords for coords in coords_sets))
         coords_n = p.shape[0]
         if coords_n != self.n:
             raise ValueError(

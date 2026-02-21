@@ -1,5 +1,6 @@
 import torch
 
+from copy import deepcopy
 from enum import Enum
 from dataclasses import dataclass
 from typing import Union, List, Tuple
@@ -43,7 +44,8 @@ class ConstrainedSolverResult:
     constrs_violated: bool
     subsolver_failed: bool
     iters: int
-    p: torch.tensor
+    p: torch.Tensor
+    p0: torch.Tensor
     g_mults: List[Tuple[float, float]]  # g lagrange multipliers
     h_mults: List[Tuple[float, float]]  # h lagrange multipliers
     gs_eval: List[float]  # value of the constraints
@@ -83,8 +85,12 @@ def ralm(
     if solve_cfg.sub_cfg is None:
         raise ValueError("Subsolver configuration must be provided to use RALM")
 
+    # clones the constrained solver configuration so we can modify its
+    # properties without modifying the original template
+    solve_cfg = deepcopy(solve_cfg)
+
     p_prev = None
-    p = p0
+    p = p0.detach().clone()
 
     n = len(gs)  # number of inequalities
     m = len(hs)  # number of equalities
@@ -93,7 +99,6 @@ def ralm(
     h_mults = torch.zeros((m,))
 
     for i in range(solve_cfg.max_iters):
-        # print(f"i: {i}")
 
         # finds the point that minimizes the augmented lagrangian function with
         # with the current lagrangian multipliers
@@ -121,6 +126,7 @@ def ralm(
                 True,
                 i + 1,
                 p,
+                p0,
                 g_mults,
                 h_mults,
                 gs_eval,
@@ -150,6 +156,7 @@ def ralm(
                 False,
                 i + 1,
                 p,
+                p0,
                 g_mults,
                 h_mults,
                 gs_eval,
@@ -197,6 +204,7 @@ def ralm(
         True,
         solve_cfg.max_iters,
         p,
+        p0,
         g_mults,
         h_mults,
         gs_eval,
