@@ -3,6 +3,7 @@ import inspect
 import itertools
 
 from torch.func import jacrev
+from torch.autograd.functional import jacobian
 
 from diff_mfld_optim.geometry.connection import Connection
 
@@ -54,7 +55,7 @@ class MetricField:
         # NOTE: compiling the equation yields a longer first call but is very
         # fast in all subsequent calls through the optimization process so this
         # is a potential strategy
-        self.fn = torch.compile(fn)
+        self.fn = fn
 
     def christoffels(self) -> Connection:
         # a function for the metric is needed here as the function is then
@@ -65,9 +66,9 @@ class MetricField:
 
         return LeviCivitaConnection(
             self.n,
-            torch.compile(
-                lambda p: _eval_christoffels(self.n, g_mat_fn, g_inv_mat_fn, p),
-            ),
+            # torch.compile(
+            lambda p: _eval_christoffels(self.n, g_mat_fn, g_inv_mat_fn, p),
+            # ),
         )
 
     def __call__(self, p):
@@ -113,6 +114,10 @@ class MetricView:
     @property
     def inv(self):
         return MetricView(self._metric, not self._inv)
+
+    @property
+    def mat(self):
+        return self._metric._matrix if not self.inv else self._metric._inv_matrix
 
     def __getitem__(self, slice):
         (

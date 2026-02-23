@@ -1,17 +1,23 @@
 # external libraries
-numba
+# numba -> has a llvm library issue in building wheel`
 numpy
 matplotlib
 scipy
 sympy
 cvxpy
-ipykernel
 sortedcontainers
 torch
 optnet
 cvxpylayers
-h5py
 tqdm
+pathos
+h5py
+# setuptools==59.6.0
+# h5py==2.10.0
+
+pip
+notebook
+ipykernel
 
 -e ./diff_mfld_optim
 -e ./geo_diff_opt_layer_ml

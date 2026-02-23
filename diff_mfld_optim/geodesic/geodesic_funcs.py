@@ -37,17 +37,26 @@ def _log_map_so_approx(p, q, conn_coeffs):
 # hack! open issue: https://github.com/pytorch/pytorch/issues/91810
 # NOTE: this just motivates not using torch as an autograd tool for evaluating
 # the function differentials in the future (especially when writing rust lib.)
+def _recursive_unwrap_tensor(tensor):
+    tensor = torch._C._functorch.get_unwrapped(tensor)
+    if torch._C._functorch.is_gradtrackingtensor(tensor):
+        return _recursive_unwrap_tensor(tensor)
+    return tensor
+
+
 def detach_numpy(tensor):
     tensor = tensor.detach().cpu()
     if torch._C._functorch.is_gradtrackingtensor(tensor):
-        tensor = torch._C._functorch.get_unwrapped(tensor)
+        # the shenanigans necessary here are annoying but some cases require
+        # this operation to be performed twice
+        unwrapped_tensor = _recursive_unwrap_tensor(tensor)
 
         # deviating from the solution on the open issue for some reason the
         # following can return a larger list (this could possibly be a
         # security issue) so we just clip it to the length of the tensor
-        total_len = np.prod(tensor.shape)
-        raw_data = np.array(tensor.storage().tolist()[:total_len])
-        return np.array(raw_data).reshape(tensor.shape)
+        total_len = np.prod(unwrapped_tensor.shape)
+        raw_data = np.array(unwrapped_tensor.storage().tolist()[:total_len])
+        return np.array(raw_data).reshape(unwrapped_tensor.shape)
     return tensor.numpy()
 
 

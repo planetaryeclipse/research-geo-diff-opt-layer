@@ -1,10 +1,16 @@
 import torch
 from time import time
 
-from geometry.metric import RnMetricField
-from optim.subsolver import SolverCfg, riem_grad_descent, SubsolverMethod
-from optim.constrained import ConstrainedSolverCfg, ralm
-from mfld_util import MfldCfg, dist_squared_map
+from torch.func import jacrev
+
+from diff_mfld_optim.geometry.metric import RnMetricField
+from diff_mfld_optim.optim.subsolver import (
+    SolverCfg,
+    riem_grad_descent,
+    SubsolverMethod,
+)
+from diff_mfld_optim.optim.constrained import ConstrainedSolverCfg, ralm
+from diff_mfld_optim.mfld_util import MfldCfg, dist_squared_map
 
 
 def test_riem_grad_descent():
@@ -52,6 +58,14 @@ def test_ralm():
     constr_solv_cfg = ConstrainedSolverCfg(
         SubsolverMethod.RIEM_GRAD_DESCENT, SolverCfg()
     )
+
+    print(mfld_cfg.log_method(p, p, mfld_cfg.conn))
+    print(dist_squared_map(p, p, mfld_cfg))
+
+    diff = jacrev(lambda q: dist_squared_map(q, p, mfld_cfg))(p)
+    print(diff)
+
+    return
 
     # TODO: improve this optimization time (likely recomputing values so can
     # likely implement caching somewhere in the architecture)

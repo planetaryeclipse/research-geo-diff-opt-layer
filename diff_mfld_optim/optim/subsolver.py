@@ -1,8 +1,10 @@
 import torch
+import numpy as np
+from copy import deepcopy, copy
 
 from enum import Enum
 from dataclasses import dataclass
-from typing import Callable, TypeVarTuple
+from typing import Callable, TypeVarTuple, Tuple
 
 from diff_mfld_optim.mfld_util import MfldCfg
 from diff_mfld_optim.geodesic.geodesic_funcs import dist_map
@@ -16,10 +18,11 @@ OptimFunc = Callable[[torch.Tensor, MfldCfg, *FuncArgs], torch.Tensor]
 
 @dataclass
 class SolverCfg:
-    conv_eps = 1e-6
-    damp = 0.6
-    damp_growth = 0.95  # decays (helps with eventual convergence)
-    max_iters = 1000
+    conv_eps: float = 1e-6
+    damp: float = 0.6
+    damp_growth: float = 0.95  # decays (helps with eventual convergence)
+    damp_clip: Tuple[float, float] = (1e-6, 2.0)
+    max_iters: int = 1000
 
 
 @dataclass
@@ -43,12 +46,16 @@ def riem_grad_descent(
     p_prev = None
     p: torch.Tensor = p0.detach().clone()
 
+    # clones the solver configuration so we can modify its properties without
+    # modifying the original template
+    solv_cfg = copy(solv_cfg)
+
     for i in range(solv_cfg.max_iters):
+        # print(f"subsolver: i={i}")
+
         # the jacobian takes too long so we abuse backward propagation here to
         # compute the differential of f (the gradient according to torch is
         # equivalent to differential in differential geometric terms)
-
-        # print(f"subsolver: i={i}, p={p}")
 
         df = jacrev(lambda p: f(p, mfld_cfg, *args))(p)
 
@@ -73,6 +80,9 @@ def riem_grad_descent(
 
         if solv_cfg.damp_growth is not None:
             solv_cfg.damp *= solv_cfg.damp_growth
+            solv_cfg.damp = np.clip(
+                solv_cfg.damp, solv_cfg.damp_clip[0], solv_cfg.damp_clip[1]
+            )
 
     return SolverResult(False, solv_cfg.max_iters, p, p0)
 

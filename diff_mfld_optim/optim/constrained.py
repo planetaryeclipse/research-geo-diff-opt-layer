@@ -1,6 +1,7 @@
 import torch
+import numpy as np
 
-from copy import deepcopy
+from copy import deepcopy, copy
 from enum import Enum
 from dataclasses import dataclass
 from typing import Union, List, Tuple
@@ -32,9 +33,16 @@ class ConstrainedSolverCfg:
 
     penalty = 0.8
     penalty_growth = 1.1  # grows over time
+
+    ratio = 0.6
+
     conv_eps = 1e-6
     max_iters = 100
     eq_eps = 1e-6  # permissable abs error for equality constraints
+
+    subsolver_acc = 0.1
+    subsolver_acc_min = 1e-3
+    subsolver_acc_growth = 0.9
 
 
 @dataclass
@@ -65,8 +73,8 @@ def _ralm_subproblem(p, rho, f, gs, hs, mu_mults, lambda_mults, mfld_cfg, *args)
 
 
 def _constraints_violated(p, gs, hs, mfld_cfg: MfldCfg, eq_eps, *args):
-    gs_eval = torch.tensor([g(p, mfld_cfg, *args) for g in gs])
-    hs_eval = torch.tensor([h(p, mfld_cfg, *args) for h in hs])
+    gs_eval = torch.tensor([g(p.detach(), mfld_cfg, *args) for g in gs])
+    hs_eval = torch.tensor([h(p.detach(), mfld_cfg, *args) for h in hs])
 
     constr_violated = torch.any(gs_eval > 0.0) or torch.any(hs_eval.abs() > eq_eps)
 
@@ -85,9 +93,9 @@ def ralm(
     if solve_cfg.sub_cfg is None:
         raise ValueError("Subsolver configuration must be provided to use RALM")
 
-    # clones the constrained solver configuration so we can modify its
-    # properties without modifying the original template
-    solve_cfg = deepcopy(solve_cfg)
+    # clones the constrained solver configuration values (not the subsolver method
+    # which causes issues) so each run of ralm is the same
+    solve_cfg = copy(solve_cfg)
 
     p_prev = None
     p = p0.detach().clone()
@@ -98,7 +106,13 @@ def ralm(
     g_mults = torch.zeros((n,))
     h_mults = torch.zeros((m,))
 
+    # force the constrained solver accuracy properties on the subsolver cfg
+    solve_cfg.sub_cfg.conv_eps = solve_cfg.subsolver_acc
+
+    # print(f"Starting constrained!")
+
     for i in range(solve_cfg.max_iters):
+        # print(f"ralm: i={i}")
 
         # finds the point that minimizes the augmented lagrangian function with
         # with the current lagrangian multipliers
@@ -119,6 +133,7 @@ def ralm(
         )
 
         if not alf_result.success:
+            # print("Sub solver failed!")
             return ConstrainedSolverResult(
                 False,
                 False,
@@ -149,6 +164,7 @@ def ralm(
             # early from the optimization process (if constraints are violated
             # then continues with iteration as the penalty will grow which
             # should hopefully allow constraint satisfaction)
+            # print("Ended successfully!")
             return ConstrainedSolverResult(
                 True,
                 True,
@@ -189,10 +205,28 @@ def ralm(
                 hj_max_clip,
             )
 
+        # updates the penalty
+        sigma = np.maximum(gs_eval.numpy(), -g_mults.numpy() / solve_cfg.penalty)
+        if len(hs_eval) > 0:
+            arr_max = np.max(
+                np.concat(np.abs(hs_eval.numpy()).flatten()), np.abs(sigma).flatten()
+            )
+        else:
+            arr_max = np.max(np.abs(sigma).flatten())
+
+        if not (i == 0 or arr_max <= solve_cfg.ratio * arr_max):
+            solve_cfg.penalty *= solve_cfg.penalty_growth
+
+        # updates the subsolver accuracy
+        solve_cfg.sub_cfg.conv_eps = np.maximum(
+            solve_cfg.sub_cfg.conv_eps * solve_cfg.subsolver_acc_growth,
+            solve_cfg.subsolver_acc_min,
+        )
+
+        # preps for the next round
         p_prev = p
 
-        if solve_cfg.penalty_growth is not None:
-            solve_cfg.penalty *= solve_cfg.penalty_growth
+    # print("Iters exceeded!")
 
     constr_violated, gs_eval, hs_eval = _constraints_violated(
         p, gs, hs, mfld_cfg, solve_cfg.eq_eps, *args

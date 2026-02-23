@@ -3,7 +3,6 @@ import numpy as np
 import torch
 
 from enum import Enum
-from aenum import member
 from scipy.optimize import root
 
 from diff_mfld_optim.geometry.metric import RnMetricField
@@ -98,6 +97,9 @@ def _solve_initial_geod_vel_so(
         # root operation computes a float64 for some reason
         return result.x.astype(dtype=p.dtype)
     else:
-        raise ValueError(
-            f"failed to find solution to logarithmic map: {result.message}"
-        )
+        print(f"p: {p}")
+        print(f"q: {q}")
+        print(f"t0: {t0}")
+        print(f"t: {t}")
+
+        raise ValueError(f"failed to find solution to logarithmic map: {result}")
