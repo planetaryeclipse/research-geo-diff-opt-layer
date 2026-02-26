@@ -50,7 +50,9 @@ class PartialsWrapper:
     def __call__(self, p) -> torch.Tensor:
         # computes the partials of the metric tensor at point p with index of
         # the basis of differentiation specified as the last dimension
-        partials = jacrev(self._field.fn)(p)  # index of diff in first dim
+        partials = jacrev(lambda p: self._field.fn(*_coords(p)))(
+            p
+        )  # index of diff in first dim
         return torch.transpose(torch.transpose(partials, 0, 2), 0, 1)
 
 
