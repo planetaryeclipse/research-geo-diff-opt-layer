@@ -355,8 +355,8 @@ valid_batch_limit = torch.inf  # 5
 # given large computational cost we will learn with a set number of batches
 # that can be learned effectively to demonstrate learning the underlying
 # controller through the optimization layer
-mpc_train_loader = DataLoader(mpc_train_dataset, batch_size=batch_size, shuffle=False)
-mpc_valid_loader = DataLoader(mpc_valid_dataset, batch_size=batch_size, shuffle=False)
+mpc_train_loader = DataLoader(mpc_train_dataset, batch_size=batch_size, shuffle=True)
+mpc_valid_loader = DataLoader(mpc_valid_dataset, batch_size=batch_size, shuffle=True)
 
 # cbf params
 k1 = 1.0
@@ -444,13 +444,14 @@ with Pool(processes=num_processes) as pool:
         unsafe_valid_loss_hist.append(unsafe_valid_loss)
 
         # creates a backup of the current data just incase
-        if epoch > 0 and epoch % backup_epochs_freq:
+        if epoch > 0 and epoch % backup_epochs_freq == 0:
             save_model_data(
                 safe_train_loss_hist,
                 unsafe_train_loss_hist,
                 safe_valid_loss_hist,
                 unsafe_valid_loss_hist,
                 training_data_dir,
+                f"bkup_{epoch}",
             )
 
 # # %%
