@@ -2,6 +2,8 @@ import itertools
 import numpy as np
 import torch
 
+import warnings
+
 from enum import Enum
 from scipy.optimize import root
 
@@ -97,9 +99,9 @@ def _solve_initial_geod_vel_so(
         # root operation computes a float64 for some reason
         return result.x.astype(dtype=p.dtype)
     else:
-        print(f"p: {p}")
-        print(f"q: {q}")
-        print(f"t0: {t0}")
-        print(f"t: {t}")
-
-        raise ValueError(f"failed to find solution to logarithmic map: {result}")
+        warnings.warn(
+            "failed to find solution to logarithmic map given conditions "
+            f"p={p}, q={q}, t0={t0}, t={t}, conn_coeffs={conn_coeffs}, "
+            "falling back to Euclidean estimate"
+        )
+        return v_guess
