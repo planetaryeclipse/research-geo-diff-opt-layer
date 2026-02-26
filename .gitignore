@@ -1,4 +1,5 @@
 .venv/
+.ipython_venv/
 __pycache__/
 *egg-info/
 .vscode/

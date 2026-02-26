@@ -43,6 +43,17 @@ def _eval_christoffels(n, g_fn, g_inv_fn, p) -> torch.tensor:
     return conn_coeffs
 
 
+class PartialsWrapper:
+    def __init__(self, field: MetricField):
+        self._field = field
+
+    def __call__(self, p) -> torch.Tensor:
+        # computes the partials of the metric tensor at point p with index of
+        # the basis of differentiation specified as the last dimension
+        partials = jacrev(self._field.fn)(p)  # index of diff in first dim
+        return torch.transpose(torch.transpose(partials, 0, 2), 0, 1)
+
+
 # technically a (0,2)-tensor but defined with additional operations to allow
 # raising/lowering indices (include this as composable behavior when writing
 # the computational differential geometry library later)
@@ -70,6 +81,12 @@ class MetricField:
             lambda p: _eval_christoffels(self.n, g_mat_fn, g_inv_mat_fn, p),
             # ),
         )
+
+    @property
+    def partials(self) -> torch.Tensor:
+        # gets a function that generates the partials of the metric tensor as
+        # a function for every point on the manifold
+        return PartialsWrapper(self)
 
     def __call__(self, p):
         metric = Metric(self, self.fn(*_coords(p)))

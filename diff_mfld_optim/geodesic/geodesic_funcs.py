@@ -68,7 +68,7 @@ class _ExpMapWrapper:
         conn_coeffs = conn(p)
 
         q = self._exp_map(detach_numpy(p), detach_numpy(v), detach_numpy(conn_coeffs))
-        return torch.tensor(q, dtype=p.dtype, requires_grad=True)
+        return torch.tensor(q, dtype=p.dtype)
 
 
 class _LogMapWrapper:
@@ -79,7 +79,7 @@ class _LogMapWrapper:
         conn_coeffs = conn(p)
 
         v = self._log_map(detach_numpy(p), detach_numpy(q), detach_numpy(conn_coeffs))
-        return torch.tensor(v, dtype=p.dtype, requires_grad=True)
+        return torch.tensor(v, dtype=p.dtype)
 
 
 class ExpMethod(Enum):

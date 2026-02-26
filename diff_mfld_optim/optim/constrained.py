@@ -10,11 +10,15 @@ from diff_mfld_optim.optim.subsolver import (
     SubsolverMethod,
     SolverCfg,
     SolverResult,
-    OptimFunc,
     FuncArgs,
 )
 from diff_mfld_optim.geodesic.geodesic_funcs import dist_map
 from diff_mfld_optim.mfld_util import MfldCfg
+
+from diff_mfld_optim.geometry.funcs import (
+    MfldFunc,
+    FuncArgs,
+)
 
 
 @dataclass
@@ -60,31 +64,137 @@ class ConstrainedSolverResult:
     hs_eval: List[float]  # value of the constraints
 
 
-def _ralm_subproblem(p, rho, f, gs, hs, mu_mults, lambda_mults, mfld_cfg, *args):
-    sum = 0
-    for i in range(len(gs)):
-        sum += torch.maximum(
-            torch.tensor(0.0), mu_mults[i] / rho + gs[i](p, mfld_cfg, *args)
+def _constraints_violated(
+    p: torch.Tensor,
+    gs: List[MfldFunc],
+    hs: List[MfldCfg],
+    cfg: MfldCfg,
+    eq_eps: float,
+    *args: *FuncArgs,
+):
+    g_vals = torch.tensor([g.value(p, cfg, *args) for g in gs])
+    h_vals = torch.tensor([h.value(p, cfg, *args) for h in hs])
+
+    return (
+        torch.any(g_vals > eq_eps) or torch.any(h_vals.abs() > eq_eps),
+        g_vals,
+        h_vals,
+    )
+
+
+class AugmentedLagrangian(MfldFunc):
+    def __init__(
+        self,
+        f: MfldFunc,
+        gs: List[MfldFunc],
+        hs: List[MfldFunc],
+        penalty: float,
+        g_mults: List[float],
+        h_mults: List[float],
+    ):
+        self._f = f
+        self._gs = gs
+        self._hs = hs
+
+        self._penalty = penalty
+        self._g_mults = g_mults
+        self._h_mults = h_mults
+
+    def value(self, p, cfg, *args):
+        aug_value = self._f.value(p, cfg, *args)
+
+        aug_sum = 0
+        aug_sum += sum(
+            torch.maximum(0, g_mult / self._penalty + g.value(p, cfg, *args) ** 2)
+            for g, g_mult in zip(self._gs, self._g_mults)
         )
-    for j in range(len(hs)):
-        sum += (hs[j](p, mfld_cfg, *args) + lambda_mults[j] / rho) ** 2
+        aug_sum += sum(
+            (h.value(p, cfg, *args) + h_mult / self._penalty) ** 2
+            for h, h_mult in zip(self._hs, self._h_mults)
+        )
+        aug_value += self._penalty / 2 * aug_sum
 
-    return f(p, mfld_cfg, *args) + rho / 2 * sum
+        return aug_value
 
+    def diff(self, p, cfg, *args):
+        aug_diff = self._f.diff(p, cfg, *args)
 
-def _constraints_violated(p, gs, hs, mfld_cfg: MfldCfg, eq_eps, *args):
-    gs_eval = torch.tensor([g(p.detach(), mfld_cfg, *args) for g in gs])
-    hs_eval = torch.tensor([h(p.detach(), mfld_cfg, *args) for h in hs])
+        g_vals = [g.value(p, cfg, *args) for g in self._gs]
 
-    constr_violated = torch.any(gs_eval > 0.0) or torch.any(hs_eval.abs() > eq_eps)
+        aug_sum = 0
+        aug_sum += sum(
+            (
+                (g_val + g_mult / self._penalty) * g.diff(p, cfg, *args)
+                if g_val > 0.0
+                else 0.0
+            )
+            for g, g_mult, g_val in zip(self._gs, self._g_mults, g_vals)
+        )
+        aug_sum += sum(
+            (h.value(p, cfg, *args) + h_mult / self._penalty) * h.diff(p, cfg, *args)
+            for h, h_mult in zip(self._hs, self._h_mults)
+        )
+        aug_diff += self._penalty * aug_sum
 
-    return constr_violated, gs_eval, hs_eval
+        return aug_diff
+
+    def hess(self, p, cfg, *args):
+        aug_hess = self._f.hess(p, cfg, *args)
+
+        g_vals = [g.value(p, cfg, *args) for g in self._gs]
+        g_diffs = [g.diff(p, cfg, *args) for g in self._gs]
+        h_diffs = [h.diff(p, cfg, *args) for h in self._hs]
+
+        aug_sum = 0
+        aug_sum += sum(
+            (
+                torch.outer(g_diff, g_diff)
+                + (g_val + g_mult / self._penalty) * g.hess(p, cfg, *args)
+                if g_val > 0.0
+                else 0.0
+            )
+            for g, g_mult, g_val, g_diff in zip(
+                self._gs, self._g_mults, g_vals, g_diffs
+            )
+        )
+        ang_sum += sum(
+            torch.outer(h_diff, h_diff)
+            + (h.value(p, cfg, *args) + h_mult / self._penalty)
+            for h, h_mult, h_diff in zip(self._hs, self._h_mults, h_diffs)
+        )
+        aug_hess += self._penalty * ang_sum
+
+        return aug_hess
+
+    @property
+    def penalty(self):
+        return self._penalty
+
+    @property
+    def g_mults(self):
+        return self._g_mults
+
+    @property
+    def h_mults(self):
+        return self._h_mults
+
+    @penalty.setter
+    def penalty(self, penalty):
+        self._penalty = penalty
+
+    @g_mults.setter
+    def g_mults(self, g_mults):
+        self._g_mults = g_mults
+
+    @h_mults.setter
+    def h_mults(self, h_mults):
+        self._h_mults = h_mults
 
 
 def ralm(
-    f: OptimFunc,
-    gs: List[OptimFunc],
-    hs: List[OptimFunc],
+    f: MfldFunc,
+    gs: List[MfldFunc],
+    hs: List[MfldFunc],
     p0: torch.Tensor,
     mfld_cfg: MfldCfg,
     solve_cfg: ConstrainedSolverCfg,
@@ -111,16 +221,16 @@ def ralm(
 
     # print(f"Starting constrained!")
 
-    for i in range(solve_cfg.max_iters):
-        # print(f"ralm: i={i}")
+    # setup the augmented lagrangian function which will be minimized by the
+    # selected unconstrained subsolver optimization method
+    aug_lagr = AugmentedLagrangian(f, gs, hs, solve_cfg.penalty, g_mults, h_mults)
 
-        # finds the point that minimizes the augmented lagrangian function with
-        # with the current lagrangian multipliers
+    for i in range(solve_cfg.max_iters):
+        # solves the optimal point of the unconstrained lagrangian function
+        # which acts as an estimator of the solution of the true problem
 
         alf_result: SolverResult = solve_cfg.sub_method(
-            lambda p, mfld_cfg, *args: _ralm_subproblem(
-                p, solve_cfg.penalty, f, gs, hs, g_mults, h_mults, mfld_cfg, *args
-            ),
+            aug_lagr,
             p,
             mfld_cfg,
             solve_cfg.sub_cfg,
@@ -131,6 +241,12 @@ def ralm(
         constr_violated, gs_eval, hs_eval = _constraints_violated(
             p, gs, hs, mfld_cfg, solve_cfg.eq_eps, *args
         )
+
+        # print(
+        #     f"ralm: i={i}, p={p}, penalty={solve_cfg.penalty}, "
+        #     f"g_mults={g_mults}, g_vals={gs_eval}, "
+        #     f"h_mults={h_mults}, h_vals={hs_eval}"
+        # )
 
         if not alf_result.success:
             # print("Sub solver failed!")
@@ -147,8 +263,7 @@ def ralm(
                 gs_eval,
                 hs_eval,
             )
-
-        if (
+        elif (
             p_prev is not None
             and dist_map(
                 p,
@@ -179,37 +294,37 @@ def ralm(
                 hs_eval,
             )
 
-        # not converged so update the lagrangians then continue with with
+        # not converged so update the multipliers then continue with with
         # attempting to optimize the augmented lagrangian function
 
-        for j in range(n):
-            gj_min_clip, gj_max_clip = (
-                solve_cfg.g_mult_clips
-                if type(solve_cfg.g_mult_clips) is tuple
-                else solve_cfg.g_mult_clips[j]
-            )
-            g_mults[j] = torch.clip(
-                g_mults[j] + solve_cfg.penalty * gs_eval[j],
-                gj_min_clip,
-                gj_max_clip,
-            )
-        for j in range(m):
-            hj_min_clip, hj_max_clip = (
-                solve_cfg.h_mult_clips
-                if type(solve_cfg.h_mult_clips) is tuple
-                else solve_cfg.h_mult_clips[j]
-            )
-            h_mults[j] = torch.clip(
-                h_mults[j] + solve_cfg.penalty * hs_eval[j],
-                hj_min_clip,
-                hj_max_clip,
-            )
+        unpack_clip_bounds = lambda clips, j: (
+            clips if type(clips) is tuple else clips[j]
+        )
+        g_mults = torch.tensor(
+            [
+                torch.clip(
+                    g_mults[j] + solve_cfg.penalty * gs_eval[j],
+                    *unpack_clip_bounds(solve_cfg.g_mult_clips, j),
+                )
+                for j in range(n)
+            ]
+        )
+        h_mults = torch.tensor(
+            [
+                torch.clip(
+                    h_mults[j] + solve_cfg.penalty * hs_eval[j],
+                    *unpack_clip_bounds(solve_cfg.h_mult_clips, j),
+                )
+                for j in range(m)
+            ]
+        )
 
         # updates the penalty
         sigma = np.maximum(gs_eval.numpy(), -g_mults.numpy() / solve_cfg.penalty)
         if len(hs_eval) > 0:
             arr_max = np.max(
-                np.concat(np.abs(hs_eval.numpy()).flatten()), np.abs(sigma).flatten()
+                np.concat(np.abs(hs_eval.numpy()).flatten()),
+                np.abs(sigma).flatten(),
             )
         else:
             arr_max = np.max(np.abs(sigma).flatten())
@@ -225,6 +340,12 @@ def ralm(
 
         # preps for the next round
         p_prev = p
+
+        # applies the changes to the augmetned lagrangian for use in the next
+        # attempt at solving the constrained optimziation problem
+        aug_lagr.penalty = solve_cfg.penalty
+        aug_lagr.g_mults = g_mults
+        aug_lagr.h_mults = h_mults
 
     # print("Iters exceeded!")
 
@@ -251,9 +372,9 @@ class ConstrainedSolverMethod(Enum):
 
     def __call__(
         self,
-        f: OptimFunc,
-        gs: List[OptimFunc],
-        hs: List[OptimFunc],
+        f: MfldFunc,
+        gs: List[MfldFunc],
+        hs: List[MfldFunc],
         p0: torch.Tensor,
         mfld_cfg: MfldCfg,
         solve_cfg: ConstrainedSolverCfg,

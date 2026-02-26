@@ -31,18 +31,9 @@ from enum import Enum
 from dataclasses import dataclass
 from datetime import datetime
 from torch.utils.data import DataLoader
-
-# import multiprocessing
-# from multiprocessing.pool import Pool
-
-# import pathos.multiprocessing
-# from pathos.multiprocessing import ProcessingPool as Pool
 from multiprocessing.dummy import Pool
 
-# from pathos.multiprocessing import ProcessingPool
-
 from controller import Controller
-from diff_mfld_optim.optim.subsolver import OptimFunc, FuncArgs
 from diff_mfld_optim.mfld_util import MfldCfg, dist_squared_map
 
 from geo_diff_opt_layer_ml.util.nominal_mpc_dataloader import (
@@ -52,13 +43,10 @@ from geo_diff_opt_layer_ml.util.nominal_mpc_dataloader import (
     MPC_VALID_DIR,
     KO_TRAIN_DIR,
     KO_VALID_DIR,
-    MPCEpisode,
     MPCEpisodeDataset,
 )
 
-from gcbf import cbf_ko
-
-from euclid_cbf import batched_cbf_ko_coeffs
+from geo_diff_opt_layer_ml.training.gcbf_nonprod import cbf_ko
 
 from diff_mfld_optim.layers.diff_opt_layer import DiffMfldOptimLayer
 from diff_mfld_optim.layers.prod_diff_opt_layer import ProdDiffMfldOptimLayer

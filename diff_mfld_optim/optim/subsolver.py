@@ -9,11 +9,10 @@ from typing import Callable, TypeVarTuple, Tuple
 from diff_mfld_optim.mfld_util import MfldCfg
 from diff_mfld_optim.geodesic.geodesic_funcs import dist_map
 
+from diff_mfld_optim.geometry.funcs import MfldFunc, FuncArgs
+
 from torch.func import jacfwd, jacrev
 from torch.autograd.functional import jacobian
-
-FuncArgs = TypeVarTuple("FuncArgs")
-OptimFunc = Callable[[torch.Tensor, MfldCfg, *FuncArgs], torch.Tensor]
 
 
 @dataclass
@@ -34,7 +33,7 @@ class SolverResult:
 
 
 def riem_grad_descent(
-    f: OptimFunc,
+    f: MfldFunc,
     p0: torch.Tensor,
     mfld_cfg: MfldCfg,
     solv_cfg: SolverCfg,
@@ -51,16 +50,13 @@ def riem_grad_descent(
     solv_cfg = copy(solv_cfg)
 
     for i in range(solv_cfg.max_iters):
-        # print(f"subsolver: i={i}")
+        # print(f"subsolver: i={i}, p={p}")
 
-        # the jacobian takes too long so we abuse backward propagation here to
-        # compute the differential of f (the gradient according to torch is
-        # equivalent to differential in differential geometric terms)
+        df = f.diff(p, mfld_cfg, *args)  # cotangent space
+        grad_f = mfld_cfg.metric_field(p).sharp(df)  # tangent space
 
-        df = jacrev(lambda p: f(p, mfld_cfg, *args))(p)
-
-        # updates the point using the exponential map
-        grad_f = mfld_cfg.metric_field(p).sharp(df)
+        # updates the point using the exponential map (manifold equivalent to
+        # regular gradient descent used for linear solvers)
         p = mfld_cfg.exp_method(p, -solv_cfg.damp * grad_f, mfld_cfg.conn)
 
         if (
@@ -92,7 +88,7 @@ class SubsolverMethod(Enum):
 
     def __call__(
         self,
-        f: OptimFunc,
+        f: MfldFunc,
         p0: torch.Tensor,
         mfld_cfg: MfldCfg,
         solve_cfg: SolverCfg,
