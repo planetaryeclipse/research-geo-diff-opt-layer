@@ -50,8 +50,6 @@ class DiffMfldOptimProblem(Function):
             )
         p_optimal = result.p
 
-        # print(f"p_optimal={p_optimal}")
-
         # offloads computing the jacobian of the solution map for use in
         # backpropagation to the backwards pass given the high computational
         # load (as we don't want to compute it unnecessarily when just only
@@ -117,13 +115,15 @@ class DiffMfldOptimProblem(Function):
         # at the non-optimal point and produces a parallel tangent vector at
         # the optimal point of the problem
         g_inv_p_optimal: torch.Tensor = mfld_cfg.metric_field(p_optimal).inv.mat
-        soln_map_jacob: torch.Tensor = -torch.tensordot(
+        soln_map_jacob: torch.Tensor = torch.tensordot(
             torch.tensordot(g_inv_p_optimal, soln_map_dual, ([1], [0])),
             parll_tranp,
             ([1], [0]),
         )
 
-        return soln_map_jacob * grad_output, *[None for _ in range(7 + len(func_args))]
+        return soln_map_jacob.inverse() * grad_output, *[
+            None for _ in range(7 + len(func_args))
+        ]
 
 
 class DiffMfldOptimLayer(Module):

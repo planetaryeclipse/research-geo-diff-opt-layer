@@ -69,7 +69,7 @@ class RiemannSquaredDist(MfldFunc):
         metric_partials = cfg.metric_field.partials(p)
 
         term_1 = torch.tensordot(metric_partials, v, ([1], [0]))
-        term_2 = g
+        term_2 = -g
         term_3 = -torch.tensordot(
             torch.tensordot(g, v, ([1], [0])), conn_coeffs, ([0], [0])
         )

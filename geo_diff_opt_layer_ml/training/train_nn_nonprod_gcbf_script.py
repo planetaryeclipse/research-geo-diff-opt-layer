@@ -289,7 +289,11 @@ training_data_dir = pathlib.Path("geo_results/nonprod_flat_metric")
 
 # load the weights and history from file if specified
 # TODO: implement if needed
-warm_start_from = (training_data_dir.joinpath("bkup_20_model_2026_02_26__17_30.pth"), 21)
+# warm_start_from = (
+#     training_data_dir.joinpath("bkup_20_model_2026_02_26__22_20.pth"),
+#     21,
+# )
+warm_start_from = None
 epoch_start_idx = 0
 
 if warm_start_from is not None:
@@ -298,7 +302,7 @@ if warm_start_from is not None:
 
 # setup model saving
 
-backup_epochs_freq = 10  # how many epochs to wait before saving model
+backup_epochs_freq = 5  # how many epochs to wait before saving model
 
 
 def save_model_data(
@@ -349,7 +353,7 @@ def save_model_data(
 # %%
 # hyperparameters
 epochs = 100
-batch_size = 128
+batch_size = 64
 lr = 1e-4
 
 
@@ -371,8 +375,8 @@ k2 = 1.0
 # of the higher order control barrier functions)
 
 constr_solv_cfg.penalty = 1.0  # must be greater than 1 to grow
-constr_solv_cfg.penalty_growth = 1.05  # must be greater than 1
-constr_solv_cfg.ratio = 0.5
+constr_solv_cfg.penalty_growth = 1.10  # must be greater than 1
+constr_solv_cfg.ratio = 0.7
 constr_solv_cfg.max_iters = 1000
 constr_solv_cfg.conv_eps = 1e-2  # this is ignored by constrained solver control
 
@@ -385,10 +389,9 @@ subsolver_cfg.damp_growth = 0.95
 subsolver_cfg.max_iters = 2000
 subsolver_cfg.damp_clip = [1e-4, 1.0]
 
-constr_solv_cfg.subsolver_acc_min = 1e-3
-constr_solv_cfg.subsolver_acc = 1e-2  # starting
-constr_solv_cfg.subsolver_acc_growth = 0.8
-
+constr_solv_cfg.subsolver_acc_min = 1e-4
+constr_solv_cfg.subsolver_acc = 1e-3  # starting
+constr_solv_cfg.subsolver_acc_growth = 0.95
 
 loss_fn = nn.MSELoss()
 # optimizer = torch.optim.RMSprop(params=cntrllr_model.parameters(), lr=lr)
