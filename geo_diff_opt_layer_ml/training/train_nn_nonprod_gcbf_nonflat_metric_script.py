@@ -297,11 +297,20 @@ training_data_dir = pathlib.Path("geo_results/nonprod_nonflat_metric")
 
 # load the weights and history from file if specified
 # TODO: implement if needed
+# warm_start_from = (
+#     training_data_dir.joinpath("bkup_20_model_2026_02_27__05_48.pth"),
+#     21
+# )
 warm_start_from = None
+epoch_start_idx = 0
+
+if warm_start_from is not None:
+    cntrllr_model.load_state_dict(torch.load(warm_start_from[0], weights_only=True))
+    epoch_start_idx = warm_start_from[1]
 
 # setup model saving
 
-backup_epochs_freq = 10  # how many epochs to wait before saving model
+backup_epochs_freq = 5  # how many epochs to wait before saving model
 
 
 def save_model_data(
@@ -352,8 +361,8 @@ def save_model_data(
 # %%
 # hyperparameters
 epochs = 100
-batch_size = 128
-lr = 1e-4
+batch_size = 64
+lr = 1e-5
 
 
 # will run with a small set of batches to demonstrate the learning
@@ -363,8 +372,8 @@ valid_batch_limit = torch.inf  # 5
 # given large computational cost we will learn with a set number of batches
 # that can be learned effectively to demonstrate learning the underlying
 # controller through the optimization layer
-mpc_train_loader = DataLoader(mpc_train_dataset, batch_size=batch_size, shuffle=False)
-mpc_valid_loader = DataLoader(mpc_valid_dataset, batch_size=batch_size, shuffle=False)
+mpc_train_loader = DataLoader(mpc_train_dataset, batch_size=batch_size, shuffle=True)
+mpc_valid_loader = DataLoader(mpc_valid_dataset, batch_size=batch_size, shuffle=True)
 
 # cbf params
 k1 = 1.0
@@ -379,19 +388,18 @@ constr_solv_cfg.ratio = 0.5
 constr_solv_cfg.max_iters = 1000
 constr_solv_cfg.conv_eps = 1e-2  # this is ignored by constrained solver control
 
-constr_solv_max_mult = 1_000_000.0
+constr_solv_max_mult = torch.inf  # 1_000_000.0
 constr_solv_cfg.g_mult_clips = (-constr_solv_max_mult, constr_solv_max_mult)
 constr_solv_cfg.h_mult_clips = (-constr_solv_max_mult, constr_solv_max_mult)
 
 subsolver_cfg.damp = 0.1
 subsolver_cfg.damp_growth = 0.95
-subsolver_cfg.max_iters = 2000
+subsolver_cfg.max_iters = 5000  # needed due to earlier training error
 subsolver_cfg.damp_clip = [1e-4, 1.0]
 
-constr_solv_cfg.subsolver_acc_min = 1e-3
-constr_solv_cfg.subsolver_acc = 1e-2  # starting
-constr_solv_cfg.subsolver_acc_growth = 0.8
-
+constr_solv_cfg.subsolver_acc_min = 1e-4
+constr_solv_cfg.subsolver_acc = 1e-3  # starting
+constr_solv_cfg.subsolver_acc_growth = 0.80
 
 loss_fn = nn.MSELoss()
 # optimizer = torch.optim.RMSprop(params=cntrllr_model.parameters(), lr=lr)
@@ -407,7 +415,7 @@ unsafe_valid_loss_hist = []
 
 # train the model
 
-pbar = tqdm.tqdm(range(epochs), desc="Training")
+pbar = tqdm.tqdm(range(epoch_start_idx, epochs), desc="Training")
 
 
 # as we're passing batches to an optimization problem (that's unfortunately
