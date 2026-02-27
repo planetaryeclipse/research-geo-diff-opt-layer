@@ -289,7 +289,12 @@ training_data_dir = pathlib.Path("geo_results/nonprod_flat_metric")
 
 # load the weights and history from file if specified
 # TODO: implement if needed
-warm_start_from = None
+warm_start_from = (training_data_dir.joinpath("bkup_20_model_2026_02_26__17_30.pth"), 21)
+epoch_start_idx = 0
+
+if warm_start_from is not None:
+    cntrllr_model.load_state_dict(torch.load(warm_start_from[0], weights_only=True))
+    epoch_start_idx = warm_start_from[1]
 
 # setup model saving
 
@@ -366,12 +371,12 @@ k2 = 1.0
 # of the higher order control barrier functions)
 
 constr_solv_cfg.penalty = 1.0  # must be greater than 1 to grow
-constr_solv_cfg.penalty_growth = 1.1  # must be greater than 1
+constr_solv_cfg.penalty_growth = 1.05  # must be greater than 1
 constr_solv_cfg.ratio = 0.5
 constr_solv_cfg.max_iters = 1000
 constr_solv_cfg.conv_eps = 1e-2  # this is ignored by constrained solver control
 
-constr_solv_max_mult = 1_000_000.0
+constr_solv_max_mult = torch.inf  # 1_000_000.0
 constr_solv_cfg.g_mult_clips = (-constr_solv_max_mult, constr_solv_max_mult)
 constr_solv_cfg.h_mult_clips = (-constr_solv_max_mult, constr_solv_max_mult)
 
@@ -399,7 +404,7 @@ unsafe_valid_loss_hist = []
 
 # train the model
 
-pbar = tqdm.tqdm(range(epochs), desc="Training")
+pbar = tqdm.tqdm(range(epoch_start_idx, epochs), desc="Training")
 
 
 # as we're passing batches to an optimization problem (that's unfortunately
