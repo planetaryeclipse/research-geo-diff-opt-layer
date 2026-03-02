@@ -80,7 +80,9 @@ gcbf_g = GCBF_Constraint()
 # manifest as warping of the input space in the off-diagonals
 # NOTE: the constants are added so the metric is nondegenerate at 0.0
 metric_field = MetricField(
-    lambda u_f, u_t: torch.tensor([[u_f + 1.0, 0.0], [0.0, u_f * u_t + 1.0]])
+    lambda u_f, u_t: torch.tensor(
+        [[0.5 * u_f**2 + 1.0, 0.0], [0.0, 0.5 * u_f**2 * 0.5 * u_t**2 + 1.0]]
+    )
 )
 conn = metric_field.christoffels()  # Levi-Citivta connection
 mfld_cfg = MfldCfg(metric_field, conn)
@@ -383,8 +385,8 @@ k2 = 1.0
 # of the higher order control barrier functions)
 
 constr_solv_cfg.penalty = 1.0  # must be greater than 1 to grow
-constr_solv_cfg.penalty_growth = 1.1  # must be greater than 1
-constr_solv_cfg.ratio = 0.5
+constr_solv_cfg.penalty_growth = 1.2  # must be greater than 1
+constr_solv_cfg.ratio = 0.8
 constr_solv_cfg.max_iters = 1000
 constr_solv_cfg.conv_eps = 1e-2  # this is ignored by constrained solver control
 
@@ -399,7 +401,7 @@ subsolver_cfg.damp_clip = [1e-4, 1.0]
 
 constr_solv_cfg.subsolver_acc_min = 1e-4
 constr_solv_cfg.subsolver_acc = 1e-3  # starting
-constr_solv_cfg.subsolver_acc_growth = 0.80
+constr_solv_cfg.subsolver_acc_growth = 0.85
 
 loss_fn = nn.MSELoss()
 # optimizer = torch.optim.RMSprop(params=cntrllr_model.parameters(), lr=lr)
@@ -422,7 +424,7 @@ pbar = tqdm.tqdm(range(epoch_start_idx, epochs), desc="Training")
 # entirely written in Python) then for speed we need to create a thread
 # pool for efficiency (adjust the number as appropriate for your system)
 
-num_processes = 7
+num_processes = 28
 with Pool(processes=num_processes) as pool:
     for epoch in pbar:
         safe_train_loss, unsafe_train_loss = train_loop_gcbf(

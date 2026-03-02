@@ -300,7 +300,7 @@ def save_model_data(
 # hyperparameters
 epochs = 100
 batch_size = 128
-lr = 1e-4
+lr = 1e-5
 
 mpc_train_loader = DataLoader(mpc_train_dataset, batch_size=batch_size, shuffle=True)
 mpc_valid_loader = DataLoader(mpc_valid_dataset, batch_size=batch_size, shuffle=True)

@@ -354,7 +354,7 @@ def save_model_data(
 # hyperparameters
 epochs = 100
 batch_size = 64
-lr = 1e-4
+lr = 1e-5
 
 
 # will run with a small set of batches to demonstrate the learning
@@ -375,7 +375,7 @@ k2 = 1.0
 # of the higher order control barrier functions)
 
 constr_solv_cfg.penalty = 1.0  # must be greater than 1 to grow
-constr_solv_cfg.penalty_growth = 1.10  # must be greater than 1
+constr_solv_cfg.penalty_growth = 1.15  # must be greater than 1
 constr_solv_cfg.ratio = 0.7
 constr_solv_cfg.max_iters = 1000
 constr_solv_cfg.conv_eps = 1e-2  # this is ignored by constrained solver control

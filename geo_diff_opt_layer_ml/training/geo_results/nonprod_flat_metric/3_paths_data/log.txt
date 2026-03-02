@@ -1,0 +1,20 @@
+constr_solv_cfg.penalty = 1.0  # must be greater than 1 to grow
+constr_solv_cfg.penalty_growth = 1.10  # must be greater than 1
+constr_solv_cfg.ratio = 0.7
+constr_solv_cfg.max_iters = 1000
+constr_solv_cfg.conv_eps = 1e-2  # this is ignored by constrained solver control
+
+constr_solv_max_mult = torch.inf  # 1_000_000.0
+constr_solv_cfg.g_mult_clips = (-constr_solv_max_mult, constr_solv_max_mult)
+constr_solv_cfg.h_mult_clips = (-constr_solv_max_mult, constr_solv_max_mult)
+
+subsolver_cfg.damp = 0.1
+subsolver_cfg.damp_growth = 0.95
+subsolver_cfg.max_iters = 2000
+subsolver_cfg.damp_clip = [1e-4, 1.0]
+
+constr_solv_cfg.subsolver_acc_min = 1e-4
+constr_solv_cfg.subsolver_acc = 1e-3  # starting
+constr_solv_cfg.subsolver_acc_growth = 0.95
+
+# at 20 when restarting change penalty_growth from 1.05 to 1.10
