@@ -233,7 +233,7 @@ cntrllr_model = Controller(
     traj_dim=traj_dim,
     num_hidden_1=num_hidden_1,
     num_hidden_2=num_hidden_2,
-    has_cbfs=False,  # only learning the underlying controller
+    has_cbfs=False,  # only learning the underlying controller (cbf inputs are disabled)
 ).to(device)
 
 cntrllr_model

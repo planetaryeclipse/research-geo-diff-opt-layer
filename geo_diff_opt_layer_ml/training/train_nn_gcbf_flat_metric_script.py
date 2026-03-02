@@ -278,14 +278,14 @@ cntrllr_model = Controller(
     traj_dim=traj_dim,
     num_hidden_1=num_hidden_1,
     num_hidden_2=num_hidden_2,
-    has_cbfs=False,  # True,
+    has_cbfs=False,  # cbf inputs are disabled
 ).to(device)
 
 cntrllr_model
 
 # %%
 
-training_data_dir = pathlib.Path("geo_results/nonprod_flat_metric")
+training_data_dir = pathlib.Path("geo_results/flat_metric")
 
 # load the weights and history from file if specified
 # TODO: implement if needed
