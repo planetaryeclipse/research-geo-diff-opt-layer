@@ -18,18 +18,24 @@ The following outlines the folder structure of this directory:
   - `training` contains the training results and the Python scripts required to run the training
     - `geo_results` the folder directories where occasional intermediate generated network parameters and batch histories are generated to. Note that if restarting then the batch history generated after the restart and before the crash will be separate (needs to be combbined afterwards) but this is not a concern if running the whole training procedure from scratch.
       - `euclid` contains the training results from running the `cvxpy`-based results from script `train_nn_cvxpy_script.py`
-      - `nonprod_flat_metric` contains the training results from running the differentiable manifold optimization layer with the Euclidean metric from script `train_nn_nonprod_gcbf_script.py`
-      - `nonprod_nonflat_metric` contains the training results from running the differentiable manifold optimziation layer with the non-Euclidean metric from script `train_nn_nonprod_gcbf_nonflat_metric_script.py`
+      - `flat_metric` contains the training results from running the differentiable manifold optimization layer with the Euclidean metric from script `train_nn_gcbf_script.py`
+      - `nonflat_metric` contains the training results from running the differentiable manifold optimziation layer with the non-Euclidean metric from script `train_nn_gcbf_nonflat_metric_script.py`
     - `controller.py` helper class containing the controller model description. Note that there is an internal parameter that can be set to allow it to accept and `h` and `h_grad` to allow the controller to learn how to avoid an obstacle but these are *disabled* during testing so the controllers presented in the results are entirely trained on the expert controller through the optimization layer so the model itself has no knowledge of the constraint
     - `euclid_cbf.py` contains helper functions for implementing the Euclidean formulation within `cvxpy`
     - `gcbf_nonprod.py` contains helper functions for implementing the geometric HOCBF formulation with the differentiable manifold optimization layer
     - `train_nn_cvxpy_script.py` is the script for the training under the differentiable convex optimization layer implemented using `cvxpylayers`
-    - `train_nn_nonprod_gcbf_script.py` is the script for the training under the differentiable manifold optimization layer implemented with the Euclidean metric
-    - `train_nn_nonprod_gcbf_nonflat_metric_script.py` is the script for the training under the differentiable manifold optimization layer implemented with the non-Euclidean metric
+    - `train_nn_gcbf_script.py` is the script for the training under the differentiable manifold optimization layer implemented with the Euclidean metric
+    - `train_nn_gcbf_nonflat_metric_script.py` is the script for the training under the differentiable manifold optimization layer implemented with the non-Euclidean metric
     > Note that the training files are *not* provided as IPython notebooks as training was setup to be run on multiple systems for performance reasons during testing. For the final data found in the current version of this directory before running any scripts, the data was run on a single system. However, the Python scripts are segmented by sections using %% so it is possible to run invidiual cells in VS Code. However, running in this way will not provide the boost from using free-threading Python so please follow the alternative instructions we've indicated here.
     - `traiing_comparison_results.ipynb` is the notebook that can be used to generate the figures comparing results.
       - Unfortunately, given the specification of timestamps, it will be necessary to select the filenames individually when loading into the dictionary. Once done, then the `batch_num` property will have to be manually adjusted based on how many batches you wish to present. Then you will need to index each set accordingly in the dictionary noting that each loaded file ended after the batch number specified in its filename so it has `batch+1` data points.
       > Note that if you terminate training of all 3 scripts after the 50 epochs backup data has been generated then you do not need to make any adjustments to the indexing.
+  - `util` contains utility functions needed for training or dataset loading
+    - `ko_cbf_generation.ipynb` creates ko region data (see above)
+    - `mpc_controller.py` generates an MPC-based optimization controller that minimizes state and input cost over a local horizon (this serves as our expert controller that the controller will learn from)
+    - `nominal_mpc_dataloader.py` provides utilities to load the dataset during training
+    - `nominal_mpc_generation.ipynb` creates state control data to use in training (see above)
+    - `trajectory_generation.ipynb` creates trajectories to run the controller on that the neural controller will learn from (see above)
 
 ## Running Training
 
@@ -45,17 +51,17 @@ Please follow the setup steps (below this section) if you have not already done 
 
 ### Training Under Euclidean Metric
 
-1. Modify the `num_processes` variable in `train_nn_nonprod_gcbf_script.py` to the amount of cores you want to run the process with
+1. Modify the `num_processes` variable in `train_nn_gcbf_script.py` to the amount of cores you want to run the process with
 2. Switch to run the `.venv` virtual environment to use free-threading Python 3.14
 3. On the command line, navigate to `training` using `cd geo_dif_opt_layer_ml/training/`
-4. Run training via `PYTHON_GIL=0 python3 train_nn_nonprod_gcbf_script.py` as this will force the use of disabling the GIL which allows us to accelerate batch processing. Terminate after the epoch 50 data generates (or wait until completion).
+4. Run training via `PYTHON_GIL=0 python3 train_nn_gcbf_script.py` as this will force the use of disabling the GIL which allows us to accelerate batch processing. Terminate after the epoch 50 data generates (or wait until completion).
 
 ### Training Under Non-Euclidean Metric
 
-1. Modify the `num_processes` variable in `train_nn_nonprod_gcbf_nonflat_metric_script.py` to the amount of cores you want to run the process with
+1. Modify the `num_processes` variable in `train_nn_gcbf_nonflat_metric_script.py` to the amount of cores you want to run the process with
 2. Switch to run the `.venv` virtual environment to use free-threading Python 3.14
 3. On the command line, navigate to `training` using `cd geo_dif_opt_layer_ml/training/`
-4. Run training via `PYTHON_GIL=0 python3 train_nn_nonprod_gcbf_nonflat_metric_script.py` as this will force the use of disabling the GIL which allows us to accelerate batch processing. Terminate after the epoch 50 data generates (or wait until completion).
+4. Run training via `PYTHON_GIL=0 python3 train_nn_gcbf_nonflat_metric_script.py` as this will force the use of disabling the GIL which allows us to accelerate batch processing. Terminate after the epoch 50 data generates (or wait until completion).
 
 > If you want to experiment with different metrics, modify the `metric_field` variable accordingly. Currently it is set to the following where `u_f` and `u_t` are `u_1` and `u_2`. Note that you do *not* need to change any Christoffel symbols as this will be computed automatically.
 
