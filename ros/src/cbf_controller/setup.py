@@ -24,6 +24,7 @@ setup(
     entry_points={
         "console_scripts": [
             "controller_node = cbf_controller.controller:main",
+            "robot_state = cbf_controller.robot_state:main",
             "robot_state_node = cbf_controller.robot_state:main",
         ],
     },

@@ -5,9 +5,9 @@ __pycache__/
 .vscode/
 *.h5
 *.egg-info/
-research-geo-diff-opt-layer/ros/build/
-research-geo-diff-opt-layer/ros/install/
-research-geo-diff-opt-layer/ros/log/
+ros/build/
+ros/install/
+ros/log/
 
 
 

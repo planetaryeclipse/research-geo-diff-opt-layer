@@ -25,11 +25,9 @@ class RobotStateNode(Node):
         super().__init__("robot_state")
 
         self.declare_parameter("accels_topic", "commanded_accels")
-        self.declare_parameter("cmd_vel_topic", "/robot9/cmd_vel")
+        self.declare_parameter("cmd_vel_topic", "/robot8/cmd_vel")
 
-        # Safety guards for bad clock jumps or message bursts.
-        self.declare_parameter("min_dt_s", 1e-4)
-        self.declare_parameter("max_dt_s", 1.0)
+
 
         accels_topic = str(self.get_parameter("accels_topic").value)
         cmd_vel_topic = str(self.get_parameter("cmd_vel_topic").value)
@@ -37,8 +35,7 @@ class RobotStateNode(Node):
         self._linear_vel = 0.0
         self._angular_vel = 0.0
 
-        self._min_dt_s = float(self.get_parameter("min_dt_s").value)
-        self._max_dt_s = float(self.get_parameter("max_dt_s").value)
+        self._max_dt = 1.0
 
         self._last_time_s: Optional[float] = None
         self._prev_accel: Optional[float] = None
@@ -57,16 +54,16 @@ class RobotStateNode(Node):
             )
             return
 
-        accel_n = float(msg.data[0])
-        ang_accel_n = float(msg.data[1])
+        commanded_accel = float(msg.data[0])
+        commanded_ang_accel = float(msg.data[1])
 
         now_s = time.monotonic()
 
         # First message: only store the acceleration so next callback can compute dt.
         if self._last_time_s is None or self._prev_accel is None or self._prev_ang_accel is None:
             self._last_time_s = now_s
-            self._prev_accel = accel_n
-            self._prev_ang_accel = ang_accel_n
+            self._prev_accel = commanded_accel
+            self._prev_ang_accel = commanded_ang_accel
 
             twist = Twist()
             twist.linear.x = float(self._linear_vel)
@@ -75,32 +72,22 @@ class RobotStateNode(Node):
             return
 
         dt = now_s - self._last_time_s
-        if dt < 0.0:
-            # Non-physical dt; update stored time/accels to resync.
-            self._last_time_s = now_s
-            self._prev_accel = accel_n
-            self._prev_ang_accel = ang_accel_n
-            return
+        if self._last_time_s > self._max_dt:
+            print("Max dt surpassed. Clamping to t=", self._max_dt)
+            dt = self._max_dt
 
-        if dt < self._min_dt_s:
-            return
-        if dt > self._max_dt_s:
-            # Clamp to avoid huge jumps after pauses / debugging.
-            dt = self._max_dt_s
 
         # v_n = v_{n-1} + (a_{n-1} + a_n)/2 * dt
-        assert self._prev_accel is not None
-        assert self._prev_ang_accel is not None
 
-        self._linear_vel = self._linear_vel + (self._prev_accel + accel_n) * 0.5 * dt
+        self._linear_vel = self._linear_vel + (self._prev_accel + commanded_accel) * 0.5 * dt
         self._angular_vel = (
-            self._angular_vel + (self._prev_ang_accel + ang_accel_n) * 0.5 * dt
+                self._angular_vel + (self._prev_ang_accel + commanded_ang_accel) * 0.5 * dt
         )
 
         # Shift state forward for next integration step.
         self._last_time_s = now_s
-        self._prev_accel = accel_n
-        self._prev_ang_accel = ang_accel_n
+        self._prev_accel = commanded_accel
+        self._prev_ang_accel = commanded_ang_accel
 
         twist = Twist()
         twist.linear.x = float(self._linear_vel)
