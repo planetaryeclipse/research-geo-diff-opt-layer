@@ -108,7 +108,11 @@ docker exec -it dji_robomaster_ros bash
 source /opt/ros/humble/setup.bash
 source /opt/ros/ws/setup.bash
 source /opt/ros/my_ws/install/setup.bash 
+
+cd /opt/ros/my_ws/
 colcon build --packages-select cbf_controller --symlink-install
+colcon build --packages-select vicon_bridge --symlink-install
+
 source install/setup.bash
 ros2 run cbf_controller robot_state
 

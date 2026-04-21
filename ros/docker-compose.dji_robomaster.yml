@@ -18,10 +18,17 @@ services:
       bash -lc "
         set -e;
         source /opt/ros/humble/setup.bash;
+        export DEBIAN_FRONTEND=noninteractive;
 
         # This should already exist in the image (robomaster_ros)
         if [ -f /opt/ros/ws/setup.bash ]; then
           source /opt/ros/ws/setup.bash;
+        fi;
+
+        DIAG_PKG=ros-$${ROS_DISTRO:-humble}-diagnostic-updater;
+        if ! dpkg -s libboost-thread-dev libboost-date-time-dev $${DIAG_PKG} >/dev/null 2>&1; then
+          apt-get update;
+          apt-get install -y libboost-thread-dev libboost-date-time-dev $${DIAG_PKG};
         fi;
 
         cd /opt/ros/my_ws;
@@ -30,8 +37,10 @@ services:
         fi;
 
         source /opt/ros/my_ws/install/setup.bash;
+        source /opt/ros/ws/setup.bash
+        source /opt/ros/my_ws/install/setup.bash 
 
-        # Run the same launch command as in README_linux
+
         # ros2 launch robomaster_ros ep.launch name:=robot9 serial_number:=3JKDH6C0012Z43
 
         # Without a long-running process here, bash exits and Docker restarts forever (restart: unless-stopped).
