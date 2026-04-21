@@ -1,0 +1,40 @@
+services:
+  dji_robomaster_ros:
+    image: dji_robomaster_ros:1.0
+    container_name: dji_robomaster_ros
+    network_mode: host
+    pid: host
+    ipc: host
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    privileged: true
+
+    volumes:
+      # Mount your ROS 2 workspace as an overlay so we don't replace /opt/ros/ws
+      - /Users/jiaanli/code/ura/research-geo-diff-opt-layer/ros:/opt/ros/my_ws:rw
+
+    command: >
+      bash -lc "
+        set -e;
+        source /opt/ros/humble/setup.bash;
+
+        # This should already exist in the image (robomaster_ros)
+        if [ -f /opt/ros/ws/setup.bash ]; then
+          source /opt/ros/ws/setup.bash;
+        fi;
+
+        cd /opt/ros/my_ws;
+        if [ ! -f install/setup.bash ]; then
+          colcon build --symlink-install;
+        fi;
+
+        source /opt/ros/my_ws/install/setup.bash;
+
+        # Run the same launch command as in README_linux
+        # ros2 launch robomaster_ros ep.launch name:=robot9 serial_number:=3JKDH6C0012Z43
+
+        # Without a long-running process here, bash exits and Docker restarts forever (restart: unless-stopped).
+        exec tail -f /dev/null
+      "
+
