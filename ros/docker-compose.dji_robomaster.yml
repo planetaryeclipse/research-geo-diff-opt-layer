@@ -12,7 +12,7 @@ services:
 
     volumes:
       # Mount your ROS 2 workspace as an overlay so we don't replace /opt/ros/ws
-      - /Users/jiaanli/code/ura/research-geo-diff-opt-layer/ros:/opt/ros/my_ws:rw
+      - /Users/jiaanli/code/ura/research-geo-diff-opt-torch/ros:/opt/ros/my_ws:rw
 
     command: >
       bash -lc "

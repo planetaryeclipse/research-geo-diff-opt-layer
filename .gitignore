@@ -1,13 +1,16 @@
+# Python and IPython
 .venv/
-.ipython_venv/
 __pycache__/
-*egg-info/
-.vscode/
-*.h5
-*.egg-info/
+.egg-info/
+.ipynb_checkpoints/
+
+# ROS2
 ros/build/
 ros/install/
 ros/log/
 
-
-
+# large data formats
+*.h5
+*.npz
+*.npy
+*.pth
