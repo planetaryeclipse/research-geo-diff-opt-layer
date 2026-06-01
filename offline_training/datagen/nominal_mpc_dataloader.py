@@ -10,15 +10,6 @@ from torch.utils.data import Dataset
 
 from typing import Tuple, List
 
-EPISODES_TRAIN_DIR = Path(__file__).parent.joinpath("../data/episodes/train")
-EPISODES_VALID_DIR = Path(__file__).parent.joinpath("../data/episodes/test")
-
-MPC_TRAIN_DIR = Path(__file__).parent.joinpath("../data/nominal_mpc/train")
-MPC_VALID_DIR = Path(__file__).parent.joinpath("../data/nominal_mpc/test")
-
-KO_TRAIN_DIR = Path(__file__).parent.joinpath("../data/keep_out/train")
-KO_VALID_DIR = Path(__file__).parent.joinpath("../data/keep_out/test")
-
 
 @dataclass
 class MPCEpisode:
@@ -55,22 +46,14 @@ class MPCEpisode:
 
 
 class MPCEpisodeDataset(Dataset):
-    def __init__(
-        self, episodes_dir: Path, mpc_dir: Path, ko_dir: Path = None, device=None
-    ):
+    def __init__(self, episodes_dir: Path, mpc_dir: Path, ko_dir: Path = None, device=None):
         # checks the episode and mpc data are matching
-        episode_files = [
-            file.name for file in episodes_dir.iterdir() if file.name != ".gitkeep"
-        ]
+        episode_files = [file.name for file in episodes_dir.iterdir() if file.name != ".gitkeep"]
         mpc_files = [file.name for file in mpc_dir.iterdir() if file.name != ".gitkeep"]
 
         ko_enabled = ko_dir is not None
 
-        ko_files = (
-            [file.name for file in ko_dir.iterdir() if file.name != ".gitkeep"]
-            if ko_enabled
-            else None
-        )
+        ko_files = [file.name for file in ko_dir.iterdir() if file.name != ".gitkeep"] if ko_enabled else None
 
         # ensures we have the same ordering (as iterating through a directory
         # does not provide any guarantees on the ordering
@@ -81,8 +64,7 @@ class MPCEpisodeDataset(Dataset):
 
         if (episode_files != mpc_files) or (ko_enabled and mpc_files != ko_files):
             raise ValueError(
-                "mpc episode dataset has nonmatching files: "
-                f"episodes_dir={episodes_dir}, mpc_dir={mpc_dir}"
+                "mpc episode dataset has nonmatching files: " f"episodes_dir={episodes_dir}, mpc_dir={mpc_dir}"
             )
 
         # loads the data
@@ -104,68 +86,32 @@ class MPCEpisodeDataset(Dataset):
                         dtype=torch.float32,
                         device=device,
                     ),
-                    torch.tensor(
-                        episode_f.attrs["start_pos"], dtype=torch.float32, device=device
-                    ),
-                    torch.tensor(
-                        episode_f["t_traj"], dtype=torch.float32, device=device
-                    ),
-                    torch.tensor(
-                        episode_f["x_traj"], dtype=torch.float32, device=device
-                    ),
-                    torch.tensor(
-                        episode_f["y_traj"], dtype=torch.float32, device=device
-                    ),
-                    torch.tensor(
-                        episode_f["dx_traj"], dtype=torch.float32, device=device
-                    ),
-                    torch.tensor(
-                        episode_f["dy_traj"], dtype=torch.float32, device=device
-                    ),
-                    torch.tensor(
-                        episode_f["ddx_traj"], dtype=torch.float32, device=device
-                    ),
-                    torch.tensor(
-                        episode_f["ddy_traj"], dtype=torch.float32, device=device
-                    ),
+                    torch.tensor(episode_f.attrs["start_pos"], dtype=torch.float32, device=device),
+                    torch.tensor(episode_f["t_traj"], dtype=torch.float32, device=device),
+                    torch.tensor(episode_f["x_traj"], dtype=torch.float32, device=device),
+                    torch.tensor(episode_f["y_traj"], dtype=torch.float32, device=device),
+                    torch.tensor(episode_f["dx_traj"], dtype=torch.float32, device=device),
+                    torch.tensor(episode_f["dy_traj"], dtype=torch.float32, device=device),
+                    torch.tensor(episode_f["ddx_traj"], dtype=torch.float32, device=device),
+                    torch.tensor(episode_f["ddy_traj"], dtype=torch.float32, device=device),
                     torch.tensor(mpc_f["p_hist"], dtype=torch.float32, device=device),
                     torch.tensor(mpc_f["u_hist"], dtype=torch.float32, device=device),
-                    torch.tensor(
-                        mpc_f["traj_err_hist"], dtype=torch.float32, device=device
-                    ),
+                    torch.tensor(mpc_f["traj_err_hist"], dtype=torch.float32, device=device),
                 )
             # if the keepout is defined then we add it to the episode
             # representation which we will use to generate additional data
             # permuations to handle training with cbfs
             if ko_enabled:
                 with h5py.File(ko_file, "r") as ko_f:
-                    episode.ko_x = torch.tensor(
-                        ko_f["ko_x"], dtype=torch.float32, device=device
-                    )
-                    episode.ko_y = torch.tensor(
-                        ko_f["ko_y"], dtype=torch.float32, device=device
-                    )
-                    episode.ko_vel_x = torch.tensor(
-                        ko_f["ko_vel_x"], dtype=torch.float32, device=device
-                    )
-                    episode.ko_vel_y = torch.tensor(
-                        ko_f["ko_vel_y"], dtype=torch.float32, device=device
-                    )
-                    episode.ko_accel_x = torch.tensor(
-                        ko_f["ko_accel_x"], dtype=torch.float32, device=device
-                    )
-                    episode.ko_accel_y = torch.tensor(
-                        ko_f["ko_accel_y"], dtype=torch.float32, device=device
-                    )
-                    episode.ko_radius = torch.tensor(
-                        ko_f["ko_radius"], dtype=torch.float32, device=device
-                    )
-                    episode.ko_vel_radius = torch.tensor(
-                        ko_f["ko_vel_radius"], dtype=torch.float32, device=device
-                    )
-                    episode.ko_accel_radius = torch.tensor(
-                        ko_f["ko_accel_radius"], dtype=torch.float32, device=device
-                    )
+                    episode.ko_x = torch.tensor(ko_f["ko_x"], dtype=torch.float32, device=device)
+                    episode.ko_y = torch.tensor(ko_f["ko_y"], dtype=torch.float32, device=device)
+                    episode.ko_vel_x = torch.tensor(ko_f["ko_vel_x"], dtype=torch.float32, device=device)
+                    episode.ko_vel_y = torch.tensor(ko_f["ko_vel_y"], dtype=torch.float32, device=device)
+                    episode.ko_accel_x = torch.tensor(ko_f["ko_accel_x"], dtype=torch.float32, device=device)
+                    episode.ko_accel_y = torch.tensor(ko_f["ko_accel_y"], dtype=torch.float32, device=device)
+                    episode.ko_radius = torch.tensor(ko_f["ko_radius"], dtype=torch.float32, device=device)
+                    episode.ko_vel_radius = torch.tensor(ko_f["ko_vel_radius"], dtype=torch.float32, device=device)
+                    episode.ko_accel_radius = torch.tensor(ko_f["ko_accel_radius"], dtype=torch.float32, device=device)
             file_data.append((filename, episode))
         self._file_data = file_data
         self._episode_len = len(file_data[0][1].t_traj)
@@ -188,19 +134,13 @@ class MPCEpisodeDataset(Dataset):
         return self._file_data[idx]
 
     def __getitem__(self, idx):
-        episode_idx = (
-            idx // (self._episode_len * self._ko_len)
-            if self._ko_enabled
-            else idx // self._episode_len
-        )
+        episode_idx = idx // (self._episode_len * self._ko_len) if self._ko_enabled else idx // self._episode_len
         _, episode = self._file_data[episode_idx]
 
         episode: MPCEpisode = episode  # for convenience
 
         if self._ko_enabled:
-            in_episode_ko_idx = idx % (
-                self._episode_len * self._ko_len
-            )  # index of timestep and ko inside episode
+            in_episode_ko_idx = idx % (self._episode_len * self._ko_len)  # index of timestep and ko inside episode
             ko_idx = in_episode_ko_idx % self._ko_len  # index of the ko being used
             step_idx = in_episode_ko_idx // self._ko_len  # index of the step being used
         else:
