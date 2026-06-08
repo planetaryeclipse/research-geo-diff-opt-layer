@@ -4,7 +4,9 @@ from pathlib import Path
 from typing import List, Tuple
 
 from scipy.interpolate import CubicSpline
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
+
+from dacite import from_dict
 
 
 def generate_waypoints(
@@ -51,95 +53,117 @@ def generate_waypoints(
     return timestamped_waypoints
 
 
-def generate_position_splines(waypoints: List[Tuple[np.ndarray, float]]) -> List[CubicSpline]:
+def generate_position_splines(
+    waypoints: List[Tuple[np.ndarray, float]],
+) -> List[CubicSpline]:
     n = len(waypoints[0][0])
 
     waypoint_t = np.array(time for _, time in waypoints)
     waypoint_coords = [np.array(pos[i] for pos, _ in waypoints) for i in range(n)]
-    waypoint_splines = [CubicSpline(waypoint_t, waypoint_coord) for waypoint_coord in waypoint_coords]
+    waypoint_splines = [
+        CubicSpline(waypoint_t, waypoint_coord) for waypoint_coord in waypoint_coords
+    ]
 
     return waypoint_splines
 
 
 @dataclass
-class Trajectory:
+class DynUnicycleTrajectory:
     t: np.ndarray
     x: np.ndarray
     dx: np.ndarray
     ddx: np.ndarray
 
 
-def generate_trajectory(
+def generate_dyn_unicycle_trajectory(
     min_next_dist: float,
     max_next_dist: float,
     min_duration: float,
     max_duration: float,
     total_time: float,
+    start_waypoint: np.ndarray,
+    velocity_bias: float,
+    sample_time: float,
     r: np.random.Generator,
-    start_waypoint: np.ndarray = np.zeros(2),
-    velocity_bias: float = 1.5,
-    sample_time: float = 0.01,
-) -> Trajectory:
+) -> DynUnicycleTrajectory:
     waypoints = generate_waypoints(
-        min_next_dist, max_next_dist, min_duration, max_duration, total_time, start_waypoint, velocity_bias, r
+        min_next_dist,
+        max_next_dist,
+        min_duration,
+        max_duration,
+        total_time,
+        start_waypoint,
+        velocity_bias,
+        r,
     )
     waypoint_splines = generate_position_splines(waypoints)
 
     sample_times = np.arange(0.0, total_time + sample_time, sample_time)
 
     traj_x = [coord_spline(sample_times) for coord_spline in waypoint_splines]
-    traj_dx = [coord_spline.derivative()(sample_times) for coord_spline in waypoint_splines]
-    traj_ddx = [coord_spline.derivative(2)(sample_times) for coord_spline in waypoint_splines]
+    traj_dx = [
+        coord_spline.derivative()(sample_times) for coord_spline in waypoint_splines
+    ]
+    traj_ddx = [
+        coord_spline.derivative(2)(sample_times) for coord_spline in waypoint_splines
+    ]
 
-    return Trajectory(sample_times, np.stack(traj_x, axis=1), np.stack(traj_dx, axis=1), np.stack(traj_ddx, axis=1))
+    return DynUnicycleTrajectory(
+        sample_times,
+        np.stack(traj_x, axis=1),
+        np.stack(traj_dx, axis=1),
+        np.stack(traj_ddx, axis=1),
+    )
 
 
 @dataclass
-class Episode:
-    trajectory: Trajectory
+class DynUnicycleEpisode:
+    trajectory: DynUnicycleTrajectory
     start: np.ndarray
 
-    def save(self, path: Path, **args):
-        np.savez(
-            path,
-            t=self.trajectory.t,
-            x=self.trajectory.x,
-            dx=self.trajectory.dx,
-            ddx=self.trajectory.ddx,
-            start=self.start,
-            *args,
-        )
+    def save(self, path: Path):
+        np.savez(path, **asdict(self))
 
     @classmethod
-    def load(cls, path: Path) -> Episode:
+    def load(cls, path: Path) -> DynUnicycleEpisode:
         data = np.load(path)
-
-        traj = Trajectory(data["t"], data["x"], data["dx"], data["ddx"])
-        start = data["start"]
-
-        return Episode(traj, start)
-
-    @classmethod
-    def save_all(cls, dir: Path, episodes: List[Episode]):
-        for i, episode in enumerate(episodes):
-            file = dir / f"episode_{i:03d}"
-            episode.save(file, id=i)
+        return from_dict(data_class=cls, data=data)
 
 
-def generate_episodes(
+def wrap_ang(ang: float) -> float:
+    is_pos_ang = np.sign(ang) == 1
+
+    half_cycles = int(np.sign(ang) * ang / np.pi)
+    on_pos_side = (half_cycles + (1 if not is_pos_ang else 0)) % 2 == 0
+
+    ang_mag = np.abs(ang) % (2.0 * np.pi)
+
+    if on_pos_side and is_pos_ang:
+        return ang_mag
+    elif not on_pos_side and is_pos_ang:
+        return ang_mag - 2.0 * np.pi
+    elif on_pos_side and not is_pos_ang:
+        return 2.0 * np.pi - ang_mag
+    else:
+        # not on_pos_side and not is_pos_ang
+        return -ang_mag
+
+
+def generate_dyn_unicycle_episodes(
     min_next_dist: float,
     max_next_dist: float,
     min_duration: float,
     max_duration: float,
     total_time: float,
     num_starts: int,
-    start_var: float,
+    start_pos_var: float,
+    start_ang_var: float,
+    start_waypoint: np.ndarray,
+    velocity_bias: float,
+    sample_time: float,
     r: np.random.Generator,
-    start_waypoint: np.ndarray = np.zeros(2),
-    velocity_bias: float = 1.5,
-    sample_time: float = 0.01,
-) -> List[Episode]:
-    traj = generate_trajectory(
+) -> List[DynUnicycleEpisode]:
+    traj = generate_dyn_unicycle_trajectory(
         min_next_dist,
         max_next_dist,
         min_duration,
@@ -150,7 +174,21 @@ def generate_episodes(
         velocity_bias,
         sample_time,
     )
-    true_start = traj.x[0, :]
-    n = len(true_start)
+    true_start_pos = traj.x[0, :]
+    n = len(true_start_pos)
 
-    return [Episode(traj, r.multivariate_normal(true_start, start_var * np.eye(n))) for _ in range(num_starts)]
+    episodes = []
+    for _ in range(num_starts):
+        # generates a randomized starting position and orientation that is distributed around the direction vector
+        # from the random start to the trajectory start
+        start_pos = r.multivariate_normal(true_start_pos, start_pos_var * np.eye(n))
+        start_pos_diff = start_pos - true_start_pos
+
+        true_start_ang = np.atan2(start_pos_diff[0], start_pos_diff[1])
+        start_ang = r.normal(true_start_ang, start_ang_var)
+
+        # ensures the randomized angle is in the usual range of (-pi, pi)
+        wrapped_ang = wrap_ang(start_ang)
+
+        episodes.append(DynUnicycleEpisode(traj, np.array([*start_pos, wrapped_ang])))
+    return episodes

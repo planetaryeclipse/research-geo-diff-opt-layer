@@ -2,11 +2,15 @@ import sys
 import numpy as np
 
 from pathlib import Path
+from typing import List
 
 sys.path.append(str(Path(__file__).parent))
 
-from offline_training.datagen.episode_gen import generate_episodes, Episode
-from util import EPISODES_TRAIN_DIR, EPISODES_VALID_DIR
+from offline_training.datagen.episode_gen import (
+    generate_dyn_unicycle_episodes,
+    DynUnicycleEpisode,
+)
+from util import EPISODES_DIR, EPISODE_FILE_PREFIX, clean_dirs
 
 # trajectory generation parameters
 START_WAYPOINT = np.zeros((2))
@@ -21,40 +25,35 @@ TOTAL_TIME = 20.0
 # episode generation parameters
 NUM_TRAJECTORIES = 20
 NUM_EPS_PER_TRAJECTORY = 5
-EPISODE_START_VAR = 0.25
-
-# training/validation data split
-TRAIN_SPLIT = 0.7
+START_POS_VAR = 0.25
+START_ANG_VAR = np.pi / 6
 
 
 def main():
     r = np.random.default_rng(42)
 
     # generates multiple randomized trajectories and generates episodes by varying the starting location
-    all_episodes = []
+    all_episodes: List[DynUnicycleEpisode] = []
     for _ in range(NUM_TRAJECTORIES):
-        episodes = generate_episodes(
+        episodes = generate_dyn_unicycle_episodes(
             min_next_dist=MIN_NEXT_DIST,
             max_next_dist=MAX_NEXT_DIST,
             min_duration=MIN_DURATION,
             max_duration=MAX_DURATION,
             total_time=TOTAL_TIME,
             num_starts=NUM_EPS_PER_TRAJECTORY,
-            start_var=EPISODE_START_VAR,
-            r=r,
+            start_pos_var=START_POS_VAR,
+            start_ang_var=START_ANG_VAR,
             start_waypoint=START_WAYPOINT,
             velocity_bias=VELOCITY_BIAS,
             sample_time=SAMPLE_TIME,
+            r=r,
         )
         all_episodes.extend(episodes)
 
-    # performs the training/validation splits
-    num_train_episodes = int(TRAIN_SPLIT * len(all_episodes))
-    train_episodes = [episode for i, episode in enumerate(all_episodes) if i <= num_train_episodes]
-    valid_episodes = [episode for i, episode in enumerate(all_episodes) if i > num_train_episodes]
-
-    Episode.save_all(EPISODES_TRAIN_DIR, train_episodes)
-    Episode.save_all(EPISODES_VALID_DIR, valid_episodes)
+    clean_dirs([EPISODES_DIR])
+    for i, episode in enumerate(all_episodes):
+        episode.save(EPISODES_DIR / EPISODE_FILE_PREFIX.format(id=i))
 
 
 if __name__ == "__main__":

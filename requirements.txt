@@ -15,11 +15,13 @@ h5py
 # setuptools==59.6.0
 # h5py==2.10.0
 
+dacite
+
 black
 
 pip
 notebook
 ipykernel
 
--e ./diff_mfld_optim
--e ./geo_diff_opt_layer_ml
+# -e ./diff_mfld_optim
+# -e ./geo_diff_opt_layer_ml

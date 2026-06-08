@@ -3,14 +3,18 @@ import itertools
 from pathlib import Path
 from typing import List
 
-EPISODES_TRAIN_DIR = Path(__file__).parent.joinpath("../data/episodes/train")
-EPISODES_VALID_DIR = Path(__file__).parent.joinpath("../data/episodes/test")
+EPISODES_DIR = Path(__file__).parent.joinpath("../data/episodes")
+EPISODE_FILE_PREFIX = "episode_{id:003d}.npz"
 
-MPC_TRAIN_DIR = Path(__file__).parent.joinpath("../data/nominal_mpc/train")
-MPC_VALID_DIR = Path(__file__).parent.joinpath("../data/nominal_mpc/test")
+CONTROLS_DIR = Path(__file__).parent.joinpath("../data/controls")
+CONTROLS_FILE_PREFIX = "controls_{id:003d}.npz"
 
-KO_TRAIN_DIR = Path(__file__).parent.joinpath("../data/keep_out/train")
-KO_VALID_DIR = Path(__file__).parent.joinpath("../data/keep_out/test")
+_PARENT_INSTANCES_DIR = Path(__file__).parent.joinpath("../data/instances")
+INDIV_INSTANCE_DIR = _PARENT_INSTANCES_DIR / "individual"
+INDIV_INSTANCE_FILE_PREFIX = "instance_{id:003d}.npz"
+
+TRAIN_INSTANCE_PATH = _PARENT_INSTANCES_DIR / "training.npz"
+VALID_INSTANCE_PATH = _PARENT_INSTANCES_DIR / "validation.npz"
 
 
 def clean_dirs(dirs: List[Path]):
