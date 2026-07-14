@@ -7,7 +7,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 
 from dyn_unicycle import dyn_ext_unicycle_model_step
-from episode_gen import DynUnicycleEpisode
+from offline_training.data_gen.datagen.episode_gen import DynUnicycleEpisode
 
 
 @dataclass

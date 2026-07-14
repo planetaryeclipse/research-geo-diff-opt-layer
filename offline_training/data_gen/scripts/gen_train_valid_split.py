@@ -6,13 +6,13 @@ from typing import List
 
 sys.path.append(str(Path(__file__).parent))
 
-from training_data import (
+from offline_training.datagen.util.training_data import (
     TrainingInstance,
     aggregate_instances,
     split_instances,
     randomize_instance,
 )
-from util import INDIV_INSTANCE_DIR, TRAIN_INSTANCE_PATH, VALID_INSTANCE_PATH
+from offline_training.datagen.util.util import INDIV_INSTANCE_DIR, TRAIN_INSTANCE_PATH, VALID_INSTANCE_PATH
 
 TRAIN_VALID_SPLIT = 0.7
 

@@ -6,12 +6,12 @@ from typing import List
 
 sys.path.append(str(Path(__file__).parent))
 
-from episode_gen import DynUnicycleEpisode
-from fb_linear_controller import SimulationResult
-from ko_zones import KeepOutZone, generate_keep_out_zones
-from training_data import generate_instances, TrainingInstance
+from offline_training.datagen.util.episode_gen import DynUnicycleEpisode
+from offline_training.datagen.util.fb_linear_controller import SimulationResult
+from offline_training.datagen.util.ko_zones import KeepOutZone, generate_keep_out_zones
+from offline_training.datagen.util.training_data import generate_instances, TrainingInstance
 
-from util import (
+from offline_training.datagen.util.util import (
     clean_dirs,
     EPISODES_DIR,
     CONTROLS_DIR,

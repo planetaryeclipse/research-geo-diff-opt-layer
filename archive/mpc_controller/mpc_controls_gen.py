@@ -11,7 +11,7 @@ sys.path.append(str(Path(__file__).parent))
 
 from archive.mpc_controller.mpc_controller import gen_mpc_controls
 
-from offline_training.datagen.episode_gen import Episode
+from offline_training.datagen.util.episode_gen import Episode
 from util import EPISODES_TRAIN_DIR, EPISODES_VALID_DIR, MPC_TRAIN_DIR, MPC_VALID_DIR
 from dyn_unicycle import (
     DYN_EXT_UNICYCLE_STATE_LEN,

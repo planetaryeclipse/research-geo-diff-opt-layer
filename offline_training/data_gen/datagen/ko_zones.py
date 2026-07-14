@@ -3,7 +3,7 @@ import numpy as np
 from dataclasses import dataclass
 from typing import List
 
-from episode_gen import DynUnicycleEpisode
+from offline_training.data_gen.datagen.episode_gen import DynUnicycleEpisode
 
 
 @dataclass

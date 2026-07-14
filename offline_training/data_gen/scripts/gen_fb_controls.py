@@ -6,9 +6,9 @@ from typing import List
 
 sys.path.append(str(Path(__file__).parent))
 
-from episode_gen import DynUnicycleEpisode
-from fb_linear_controller import simulate_under_fb_linear_control
-from util import EPISODES_DIR, CONTROLS_DIR, CONTROLS_FILE_PREFIX, clean_dirs
+from offline_training.datagen.util.episode_gen import DynUnicycleEpisode
+from offline_training.datagen.util.fb_linear_controller import simulate_under_fb_linear_control
+from offline_training.datagen.util.util import EPISODES_DIR, CONTROLS_DIR, CONTROLS_FILE_PREFIX, clean_dirs
 
 KP_GAINS = 0.1 * np.eye(2)
 KD_GAINS = 0.5 * np.eye(2)

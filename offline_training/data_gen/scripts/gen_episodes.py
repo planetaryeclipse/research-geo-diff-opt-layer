@@ -6,11 +6,11 @@ from typing import List
 
 sys.path.append(str(Path(__file__).parent))
 
-from offline_training.datagen.episode_gen import (
+from offline_training.datagen.util.episode_gen import (
     generate_dyn_unicycle_episodes,
     DynUnicycleEpisode,
 )
-from util import EPISODES_DIR, EPISODE_FILE_PREFIX, clean_dirs
+from offline_training.datagen.util.util import EPISODES_DIR, EPISODE_FILE_PREFIX, clean_dirs
 
 # trajectory generation parameters
 START_WAYPOINT = np.zeros((2))

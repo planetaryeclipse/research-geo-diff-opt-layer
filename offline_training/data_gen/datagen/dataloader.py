@@ -1,10 +1,8 @@
 from torch.utils.data import Dataset
-
-from training_data import TrainingInstance
+from offline_training.data_gen.datagen.training_data import TrainingInstance
 
 
 class DynUnicycleDataset(Dataset):
-
     def __init__(self, instance: TrainingInstance):
         self._instance = instance
         self._len = instance.traj.pos.shape[0]

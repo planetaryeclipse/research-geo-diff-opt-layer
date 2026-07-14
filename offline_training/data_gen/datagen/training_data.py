@@ -6,9 +6,9 @@ from typing import List, Tuple
 
 from dacite import from_dict
 
-import episode_gen
-import ko_zones
-import fb_linear_controller
+import offline_training.data_gen.datagen.episode_gen as episode_gen
+import offline_training.data_gen.datagen.ko_zones as ko_zones
+import offline_training.data_gen.datagen.fb_linear_controller as fb_linear_controller
 
 
 @dataclass
