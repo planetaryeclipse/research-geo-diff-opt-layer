@@ -1,0 +1,3 @@
+[submodule "src/dmol"]
+	path = src/dmol
+	url = git@github.com:planetaryeclipse/dmol.git

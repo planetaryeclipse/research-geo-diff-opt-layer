@@ -23,5 +23,4 @@ pip
 notebook
 ipykernel
 
-# -e ./diff_mfld_optim
-# -e ./geo_diff_opt_layer_ml
+-e src/dmol
