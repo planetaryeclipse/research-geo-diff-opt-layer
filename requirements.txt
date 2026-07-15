@@ -1,21 +1,18 @@
-# external libraries
-# numba -> has a llvm library issue in building wheel`
 numpy
 matplotlib
 scipy
 sympy
 cvxpy
-sortedcontainers
 torch
 optnet
 cvxpylayers
 tqdm
 pathos
-h5py
-# setuptools==59.6.0
-# h5py==2.10.0
-
 dacite
+
+cattrs
+rootutils
+hydra-core
 
 black
 

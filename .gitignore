@@ -14,3 +14,6 @@ ros/log/
 *.npz
 *.npy
 *.pth
+
+# experiment folders
+approx_optim/results/*
