@@ -9,21 +9,92 @@ import torch
 import numpy as np
 
 
-from dmol.diff_mfld.connection.methods.geod_log_diff import LogMapCovarMethod
-from dmol.diff_mfld.connection.methods.methods import (
+from external.dmol.src.dmol.diff_mfld.connection.methods.geod_log_diff import (
+    LogMapCovarMethod,
+)
+from external.dmol.src.dmol.diff_mfld.connection.methods.methods import (
     Distance,
     DistanceMethod,
     ExpMapMethod,
     LogMapMethod,
 )
-from dmol.diff_mfld.field.riem_fields import RiemSqrDist
-from dmol.diff_mfld.field.util import coord_repr
-from dmol.diff_mfld.mfld import Manifold
-from dmol.diff_mfld.riemann import MetricLambdaField
-from dmol.optim.constr.ralm import ralm
-from dmol.optim.methods import ConstrOptimFn, Retraction
-from dmol.optim.unconstr.rgd import rgd
-from dmol.optim.unconstr.rtr import rtr
+from external.dmol.src.dmol.diff_mfld.field.riem_fields import RiemSqrDist
+from external.dmol.src.dmol.diff_mfld.field.util import coord_repr
+from external.dmol.src.dmol.diff_mfld.mfld import Manifold
+from external.dmol.src.dmol.diff_mfld.riemann import MetricLambdaField
+from external.dmol.src.dmol.optim.constr.ralm import ralm
+from external.dmol.src.dmol.optim.methods import ConstrOptimFn, Retraction
+from external.dmol.src.dmol.optim.unconstr.rgd import rgd
+from external.dmol.src.dmol.optim.unconstr.rtr import rtr
+
+# solver args
+TOL = 1e-3
+MAX_ITERS = 200
+METHODS_APPROX_O1 = (
+    ExpMapMethod.APPROX_O1,
+    DistanceMethod.APPROX_O1,
+    LogMapMethod.APPROX_O1,
+    LogMapCovarMethod.APPROX_O1,
+)
+METHODS_APPROX_O2 = (
+    ExpMapMethod.APPROX_O2,
+    DistanceMethod.APPROX_O2,
+    LogMapMethod.APPROX_O2,
+    LogMapCovarMethod.APPROX_O2,
+)
+METHODS_APPROX_O3 = (
+    ExpMapMethod.APPROX_O3,
+    DistanceMethod.APPROX_O3,
+    LogMapMethod.APPROX_O3,
+    LogMapCovarMethod.APPROX_O3,
+)
+METHODS_APPROX_O4 = (
+    ExpMapMethod.APPROX_O4,
+    DistanceMethod.APPROX_O4,
+    LogMapMethod.APPROX_O4,
+    LogMapCovarMethod.APPROX_O4,
+)
+
+# problem setup
+COORD_SCALING_FACTORS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.50]
+COST_SCALING_FACTOR = 0.02
+CONSTR_SCALING_FACTOR = 0.02
+COST_CENTER = np.array([-5.0, -1.0, 3.0])
+CONSTR_CENTER = np.array([-2.0, 3.0, 1.0])
+CONSTR_RADIUS = 3.0
+START_POS_MEAN = np.array([2.0, -5.0, -8.0])
+START_POS_COVAR = 2.0**2 * np.eye(3)
+NUM_STARTS = 20
+RNG_SEED = 42
+
+# ralm specific arguments
+SUBSOLVER_RGD = (rgd, {"damp": 0.15})
+IDENT_SYMM_OPER = lambda p: p
+SUBSOLVER_RTR = (
+    rtr,
+    {
+        "radius_max": 1.0,
+        "radius_start": 0.1,
+        "quality_step_thresh": 0.15,
+        "h": IDENT_SYMM_OPER,  # do not change
+        "radius_eps": 1e-6,
+        "quality_eps": 1e-6,
+        # "default_retr_damp": 0.9,
+    },
+)
+PENALTY_START = 0.1
+PENALTY_GROWTH = 1.1
+INEQ_MULT_START = 0.0
+INEQ_MULTS_MIN = -torch.inf
+INEQ_MULTS_MAX = torch.inf
+EQ_MULT_START = 0.0
+EQ_MULTS_MIN = -torch.inf
+EQ_MULTS_MAX = torch.inf
+SUBSOLVER_TOL_START = 1e-1
+SUBSOLVER_TOL_MIN = 1e-3
+SUBSOLVER_TOL_DECAY = 0.9
+SUBSOLVER_MAX_ITERS = 200
+RATIO = 0.8
 
 
 @dataclass
@@ -157,128 +228,60 @@ def run_test(
 
 
 def run_all_tests(run_dir: Path):
-    # solver args
-    tol = 1e-3
-    max_iters = 200
-    methods_approx_o1 = (
-        ExpMapMethod.APPROX_O1,
-        DistanceMethod.APPROX_O1,
-        LogMapMethod.APPROX_O1,
-        LogMapCovarMethod.APPROX_O1,
-    )
-    methods_approx_o2 = (
-        ExpMapMethod.APPROX_O2,
-        DistanceMethod.APPROX_O2,
-        LogMapMethod.APPROX_O2,
-        LogMapCovarMethod.APPROX_O2,
-    )
-    methods_approx_o3 = (
-        ExpMapMethod.APPROX_O3,
-        DistanceMethod.APPROX_O3,
-        LogMapMethod.APPROX_O3,
-        LogMapCovarMethod.APPROX_O3,
-    )
-    methods_approx_o4 = (
-        ExpMapMethod.APPROX_O4,
-        DistanceMethod.APPROX_O4,
-        LogMapMethod.APPROX_O4,
-        LogMapCovarMethod.APPROX_O4,
-    )
 
-    # problem setup
-    coord_scaling_factors = [0.25, 0.5, 0.75, 1.0, 1.25, 1.50]
-    cost_scaling_factor = 0.02
-    constr_scaling_factor = 0.02
-    cost_center = np.array([-5.0, -1.0, 3.0])
-    constr_center = np.array([-2.0, 3.0, 1.0])
-    constr_radius = 3.0
-    start_pos_mean = np.array([2.0, -5.0, -8.0])
-    start_pos_covar = 2.0**2 * np.eye(3)
-    num_starts = 20
-    rng_seed = 42
-
-    # ralm specific arguments
-    subsolver_rgd = (rgd, {"damp": 0.15})
-    ident_symm_oper = lambda p: p
-    subsolver_rtr = (
-        rtr,
-        {
-            "radius_max": 1.0,
-            "radius_start": 0.1,
-            "quality_step_thresh": 0.15,
-            "h": ident_symm_oper,  # do not change
-            "radius_eps": 1e-6,
-            "quality_eps": 1e-6,
-            # "default_retr_damp": 0.9,
-        },
-    )
-    penalty_start = 0.1
-    penalty_growth = 1.1
-    ineq_mult_start = 0.0
-    ineq_mults_min = -torch.inf
-    ineq_mults_max = torch.inf
-    eq_mult_start = 0.0
-    eq_mults_min = -torch.inf
-    eq_mults_max = torch.inf
-    subsolver_tol_start = 1e-1
-    subsolver_tol_min = 1e-3
-    subsolver_tol_decay = 0.9
-    subsolver_max_iters = 200
-    ratio = 0.8
-
-    # generates configs along with file prefixes
+    # generates combinations of methods and scalings along with file names
     configs = []
-    for coord_scale in coord_scaling_factors:
+    for coord_scale in COORD_SCALING_FACTORS:
         configs.extend(
             [
                 # rgd
                 (
                     f"approx_o1_rgd_{coord_scale}",
-                    methods_approx_o1,
-                    subsolver_rgd,
+                    METHODS_APPROX_O1,
+                    SUBSOLVER_RGD,
                     coord_scale,
                 ),
                 (
                     f"approx_o2_rgd_{coord_scale}",
-                    methods_approx_o2,
-                    subsolver_rgd,
+                    METHODS_APPROX_O2,
+                    SUBSOLVER_RGD,
                     coord_scale,
                 ),
                 (
                     f"approx_o3_rgd_{coord_scale}",
-                    methods_approx_o3,
-                    subsolver_rgd,
+                    METHODS_APPROX_O3,
+                    SUBSOLVER_RGD,
                     coord_scale,
                 ),
                 (
                     f"approx_o4_rgd_{coord_scale}",
-                    methods_approx_o4,
-                    subsolver_rgd,
+                    METHODS_APPROX_O4,
+                    SUBSOLVER_RGD,
                     coord_scale,
                 ),
                 # rtr
                 (
                     f"approx_o1_rtr_{coord_scale}",
-                    methods_approx_o1,
-                    subsolver_rtr,
+                    METHODS_APPROX_O1,
+                    SUBSOLVER_RTR,
                     coord_scale,
                 ),
                 (
                     f"approx_o2_rtr_{coord_scale}",
-                    methods_approx_o2,
-                    subsolver_rtr,
+                    METHODS_APPROX_O2,
+                    SUBSOLVER_RTR,
                     coord_scale,
                 ),
                 (
                     f"approx_o3_rtr_{coord_scale}",
-                    methods_approx_o3,
-                    subsolver_rtr,
+                    METHODS_APPROX_O3,
+                    SUBSOLVER_RTR,
                     coord_scale,
                 ),
                 (
                     f"approx_o4_rtr_{coord_scale}",
-                    methods_approx_o4,
-                    subsolver_rtr,
+                    METHODS_APPROX_O4,
+                    SUBSOLVER_RTR,
                     coord_scale,
                 ),
             ]
@@ -297,15 +300,15 @@ def run_all_tests(run_dir: Path):
             config_subsolver_args[key] = str(value)
         config = {
             "coord_scaling": coord_scaling,
-            "cost_scaling": cost_scaling_factor,
-            "constr_scaling": constr_scaling_factor,
-            "cost_center": str(cost_center),
-            "constr_center": str(constr_center),
-            "constr_radius": constr_radius,
-            "start_pos_mean": str(start_pos_mean),
-            "start_pos_covar": str(start_pos_covar),
-            "rng_seed": rng_seed,
-            "num_starts": num_starts,
+            "cost_scaling": COST_SCALING_FACTOR,
+            "constr_scaling": CONSTR_SCALING_FACTOR,
+            "cost_center": str(COST_CENTER),
+            "constr_center": str(CONSTR_CENTER),
+            "constr_radius": CONSTR_RADIUS,
+            "start_pos_mean": str(START_POS_MEAN),
+            "start_pos_covar": str(START_POS_COVAR),
+            "rng_seed": RNG_SEED,
+            "num_starts": NUM_STARTS,
             "solver_args": {
                 "retr": str(retr),
                 "dist": str(dist),
@@ -314,19 +317,19 @@ def run_all_tests(run_dir: Path):
                 # additional args
                 "subsolver_method": subsolver_method.__name__,
                 "subsolver_args": config_subsolver_args,
-                "penalty_start": penalty_start,
-                "penalty_growth": penalty_growth,
-                "ineq_mult_start": ineq_mult_start,
-                "ineq_mults_min": ineq_mults_min,
-                "ineq_mults_max": ineq_mults_max,
-                "eq_mult_start": eq_mult_start,
-                "eq_mults_min": eq_mults_min,
-                "eq_mults_max": eq_mults_max,
-                "subsolver_tol_start": subsolver_tol_start,
-                "subsolver_tol_min": subsolver_tol_min,
-                "subsolver_tol_decay": subsolver_tol_decay,
-                "subsolver_max_iters": subsolver_max_iters,
-                "ratio": ratio,
+                "penalty_start": PENALTY_START,
+                "penalty_growth": PENALTY_GROWTH,
+                "ineq_mult_start": INEQ_MULT_START,
+                "ineq_mults_min": INEQ_MULTS_MIN,
+                "ineq_mults_max": INEQ_MULTS_MAX,
+                "eq_mult_start": EQ_MULT_START,
+                "eq_mults_min": EQ_MULTS_MIN,
+                "eq_mults_max": EQ_MULTS_MAX,
+                "subsolver_tol_start": SUBSOLVER_TOL_START,
+                "subsolver_tol_min": SUBSOLVER_TOL_MIN,
+                "subsolver_tol_decay": SUBSOLVER_TOL_DECAY,
+                "subsolver_max_iters": SUBSOLVER_MAX_ITERS,
+                "ratio": RATIO,
             },
         }
         with open(run_dir / f"{file_name}_config.yaml", "w") as file:
@@ -335,39 +338,39 @@ def run_all_tests(run_dir: Path):
         # run the test and save the result
         result = run_test(
             coord_scaling,
-            cost_scaling_factor,
-            constr_scaling_factor,
-            cost_center,
-            constr_center,
-            constr_radius,
+            COST_SCALING_FACTOR,
+            CONSTR_SCALING_FACTOR,
+            COST_CENTER,
+            CONSTR_CENTER,
+            CONSTR_RADIUS,
             retr,
             dist,
             log_method,
             log_covar_method,
-            start_pos_mean,
-            start_pos_covar,
-            rng_seed,
-            num_starts,
+            START_POS_MEAN,
+            START_POS_COVAR,
+            RNG_SEED,
+            NUM_STARTS,
             ralm,
             {
                 "subsolver_method": subsolver_method,
                 "subsolver_args": subsolver_args,
-                "penalty_start": penalty_start,
-                "penalty_growth": penalty_growth,
-                "ineq_mult_start": ineq_mult_start,
-                "ineq_mults_min": ineq_mults_min,
-                "ineq_mults_max": ineq_mults_max,
-                "eq_mult_start": eq_mult_start,
-                "eq_mults_min": eq_mults_min,
-                "eq_mults_max": eq_mults_max,
-                "subsolver_tol_start": subsolver_tol_start,
-                "subsolver_tol_min": subsolver_tol_min,
-                "subsolver_tol_decay": subsolver_tol_decay,
-                "subsolver_max_iters": subsolver_max_iters,
-                "ratio": ratio,
+                "penalty_start": PENALTY_START,
+                "penalty_growth": PENALTY_GROWTH,
+                "ineq_mult_start": INEQ_MULT_START,
+                "ineq_mults_min": INEQ_MULTS_MIN,
+                "ineq_mults_max": INEQ_MULTS_MAX,
+                "eq_mult_start": EQ_MULT_START,
+                "eq_mults_min": EQ_MULTS_MIN,
+                "eq_mults_max": EQ_MULTS_MAX,
+                "subsolver_tol_start": SUBSOLVER_TOL_START,
+                "subsolver_tol_min": SUBSOLVER_TOL_MIN,
+                "subsolver_tol_decay": SUBSOLVER_TOL_DECAY,
+                "subsolver_max_iters": SUBSOLVER_MAX_ITERS,
+                "ratio": RATIO,
             },
-            tol,
-            max_iters,
+            TOL,
+            MAX_ITERS,
         )
         torch.save(converter.unstructure(result), run_dir / f"{file_name}.pt")
 
