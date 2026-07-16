@@ -1,14 +1,9 @@
-import sys
 import numpy as np
 
-from pathlib import Path
-from typing import List
-
-sys.path.append(str(Path(__file__).parent))
-
-from offline_training.datagen.util.episode_gen import DynUnicycleEpisode
-from offline_training.datagen.util.fb_linear_controller import simulate_under_fb_linear_control
-from offline_training.datagen.util.util import EPISODES_DIR, CONTROLS_DIR, CONTROLS_FILE_PREFIX, clean_dirs
+from offline_data_gen.episode_gen import DynUnicycleEpisode
+from offline_data_gen.fb_linear_controller import simulate_under_fb_linear_control
+from offline_data_gen.paths import CONTROLS_DIR, CONTROLS_FILE_PREFIX, EPISODES_DIR
+from offline_data_gen.util import clean_dirs
 
 KP_GAINS = 0.1 * np.eye(2)
 KD_GAINS = 0.5 * np.eye(2)

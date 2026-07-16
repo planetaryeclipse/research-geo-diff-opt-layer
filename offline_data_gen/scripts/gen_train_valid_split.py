@@ -1,18 +1,16 @@
-import sys
 import numpy as np
 
-from pathlib import Path
-from typing import List
-
-sys.path.append(str(Path(__file__).parent))
-
-from offline_training.datagen.util.training_data import (
+from offline_data_gen.paths import (
+    INDIV_INSTANCE_DIR,
+    TRAIN_INSTANCE_PATH,
+    VALID_INSTANCE_PATH,
+)
+from offline_data_gen.training_data import (
     TrainingInstance,
     aggregate_instances,
-    split_instances,
     randomize_instance,
+    split_instances,
 )
-from offline_training.datagen.util.util import INDIV_INSTANCE_DIR, TRAIN_INSTANCE_PATH, VALID_INSTANCE_PATH
 
 TRAIN_VALID_SPLIT = 0.7
 
@@ -28,7 +26,8 @@ def main():
 
     # aggegate all loaded instances and randomize
     all_instances = [
-        TrainingInstance.load(instance) for instance in instance_file_names
+        TrainingInstance.load(INDIV_INSTANCE_DIR / instance)
+        for instance in instance_file_names
     ]
     aggregated_data = aggregate_instances(all_instances)
     randomized_data = randomize_instance(aggregated_data, r)

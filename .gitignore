@@ -1,8 +1,8 @@
 # Python and IPython
 .venv/
 __pycache__/
-.egg-info/
-.ipynb_checkpoints/
+**/*.egg-info/
+**/*.ipynb_checkpoints/
 
 # ROS2
 ros/build/

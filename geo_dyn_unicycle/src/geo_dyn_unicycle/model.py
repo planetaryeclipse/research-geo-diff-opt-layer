@@ -1,6 +1,3 @@
-from dataclasses import dataclass
-from typing import Callable
-
 import numpy as np
 
 from scipy.integrate import solve_ivp

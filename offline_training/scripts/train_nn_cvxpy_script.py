@@ -12,7 +12,7 @@ import numpy as np
 from datetime import datetime
 from torch.utils.data import DataLoader
 
-from dyn_unicycle.controller import Controller
+from dyn_unicycle.dyn_unicycle.controller import Controller
 
 import cvxpy as cp
 from cvxpylayers.torch import CvxpyLayer
@@ -27,7 +27,7 @@ from geo_diff_opt_layer_ml.util.nominal_mpc_dataloader import (
     MPCEpisodeDataset,
 )
 
-from dyn_unicycle.euclid_cbf import batched_cbf_ko_coeffs
+from dyn_unicycle.dyn_unicycle.euclid_cbf import batched_cbf_ko_coeffs
 
 # %%
 # device = torch.device(

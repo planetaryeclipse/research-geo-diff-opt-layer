@@ -20,4 +20,6 @@ pip
 notebook
 ipykernel
 
--e src/dmol
+-e external/dmol
+-e geo_dyn_unicycle
+-e offline_data_gen

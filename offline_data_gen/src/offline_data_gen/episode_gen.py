@@ -1,3 +1,4 @@
+from dacite import from_dict
 import numpy as np
 
 from pathlib import Path
@@ -5,8 +6,6 @@ from typing import List, Tuple
 
 from scipy.interpolate import CubicSpline
 from dataclasses import dataclass, asdict
-
-from dacite import from_dict
 
 
 def generate_waypoints(
@@ -169,10 +168,10 @@ def generate_dyn_unicycle_episodes(
         min_duration,
         max_duration,
         total_time,
-        r,
         start_waypoint,
         velocity_bias,
         sample_time,
+        r,
     )
     true_start_pos = traj.x[0, :]
     n = len(true_start_pos)

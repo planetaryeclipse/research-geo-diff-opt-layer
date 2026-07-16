@@ -1,23 +1,18 @@
-import sys
 import numpy as np
 
-from pathlib import Path
 from typing import List
 
-sys.path.append(str(Path(__file__).parent))
-
-from offline_training.datagen.util.episode_gen import DynUnicycleEpisode
-from offline_training.datagen.util.fb_linear_controller import SimulationResult
-from offline_training.datagen.util.ko_zones import KeepOutZone, generate_keep_out_zones
-from offline_training.datagen.util.training_data import generate_instances, TrainingInstance
-
-from offline_training.datagen.util.util import (
-    clean_dirs,
-    EPISODES_DIR,
+from offline_data_gen.episode_gen import DynUnicycleEpisode
+from offline_data_gen.fb_linear_controller import SimulationResult
+from offline_data_gen.ko_zones import generate_keep_out_zones
+from offline_data_gen.paths import (
     CONTROLS_DIR,
+    EPISODES_DIR,
     INDIV_INSTANCE_DIR,
     INDIV_INSTANCE_FILE_PREFIX,
 )
+from offline_data_gen.training_data import TrainingInstance, generate_instances
+from offline_data_gen.util import clean_dirs
 
 NUM_ZONES = 10
 
@@ -46,8 +41,8 @@ def main():
 
     all_instances: List[TrainingInstance] = []
     for episode_file, dyn_file in zip(episode_file_names, dyn_file_names):
-        episode = DynUnicycleEpisode.load(episode_file)
-        dyn_result = SimulationResult.load(dyn_file)
+        episode = DynUnicycleEpisode.load(EPISODES_DIR / episode_file)
+        dyn_result = SimulationResult.load(CONTROLS_DIR / dyn_file)
         ko_zones = generate_keep_out_zones(
             episode,
             NUM_ZONES,

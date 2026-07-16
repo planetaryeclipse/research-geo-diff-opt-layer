@@ -1,0 +1,8 @@
+[project]
+name = "geo_dyn_unicycle"
+version = "0.0.1"
+dependencies = []
+
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"

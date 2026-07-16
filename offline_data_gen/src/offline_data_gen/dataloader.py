@@ -1,5 +1,5 @@
 from torch.utils.data import Dataset
-from offline_training.data_gen.datagen.training_data import TrainingInstance
+from training_data import TrainingInstance
 
 
 class DynUnicycleDataset(Dataset):

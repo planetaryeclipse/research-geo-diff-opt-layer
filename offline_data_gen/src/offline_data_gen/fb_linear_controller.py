@@ -1,4 +1,9 @@
 import sys
+from geo_dyn_unicycle.model import (
+    DYN_EXT_UNICYCLE_CONTROLS_LEN,
+    DYN_EXT_UNICYCLE_STATE_LEN,
+    dyn_ext_unicycle_model_step,
+)
 import numpy as np
 
 from dacite import from_dict
@@ -6,8 +11,7 @@ from dacite import from_dict
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
-from dyn_unicycle import dyn_ext_unicycle_model_step
-from offline_training.data_gen.datagen.episode_gen import DynUnicycleEpisode
+from offline_data_gen.episode_gen import DynUnicycleEpisode
 
 
 @dataclass
@@ -44,10 +48,12 @@ def simulate_under_fb_linear_control(
     )
     curr_controls = None
 
-    state_hist = np.zeros()
-    controls_hist = np.zeros()
-
     num_timesteps = len(episode.trajectory.t)
+    dt = episode.trajectory.t[1] - episode.trajectory.t[0]
+
+    state_hist = np.zeros((num_timesteps, DYN_EXT_UNICYCLE_STATE_LEN))
+    controls_hist = np.zeros((num_timesteps, DYN_EXT_UNICYCLE_CONTROLS_LEN))
+
     for i in range(num_timesteps):
         # gets the current state and trajectory state
         curr_t = episode.trajectory.t[i]

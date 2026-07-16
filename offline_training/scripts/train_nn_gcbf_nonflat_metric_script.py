@@ -25,7 +25,7 @@ from datetime import datetime
 from torch.utils.data import DataLoader
 from multiprocessing.dummy import Pool
 
-from dyn_unicycle.controller import Controller
+from dyn_unicycle.dyn_unicycle.controller import Controller
 from diff_mfld_optim.mfld_util import MfldCfg
 
 from geo_diff_opt_layer_ml.util.nominal_mpc_dataloader import (
@@ -40,7 +40,7 @@ from geo_diff_opt_layer_ml.util.nominal_mpc_dataloader import (
 
 from diff_mfld_optim.layers.diff_opt_layer import DiffMfldOptimLayer
 
-from dyn_unicycle.gcbf_nonprod import GCBF_Cost, GCBF_Constraint
+from dyn_unicycle.dyn_unicycle.gcbf_nonprod import GCBF_Cost, GCBF_Constraint
 
 # %%
 import sys

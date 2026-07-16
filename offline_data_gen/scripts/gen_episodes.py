@@ -1,16 +1,13 @@
-import sys
 import numpy as np
 
-from pathlib import Path
 from typing import List
 
-sys.path.append(str(Path(__file__).parent))
-
-from offline_training.datagen.util.episode_gen import (
-    generate_dyn_unicycle_episodes,
+from offline_data_gen.episode_gen import (
     DynUnicycleEpisode,
+    generate_dyn_unicycle_episodes,
 )
-from offline_training.datagen.util.util import EPISODES_DIR, EPISODE_FILE_PREFIX, clean_dirs
+from offline_data_gen.paths import EPISODE_FILE_PREFIX, EPISODES_DIR
+from offline_data_gen.util import clean_dirs
 
 # trajectory generation parameters
 START_WAYPOINT = np.zeros((2))
