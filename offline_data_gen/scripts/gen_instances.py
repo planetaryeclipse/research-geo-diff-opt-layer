@@ -33,10 +33,10 @@ def main():
     r = np.random.default_rng(43)
 
     episode_file_names = sorted(
-        file.name for file in EPISODES_DIR.iterdir() if file.name is not ".gitkeep"
+        file.name for file in EPISODES_DIR.iterdir() if file.name != ".gitkeep"
     )
     dyn_file_names = sorted(
-        file.name for file in CONTROLS_DIR.iterdir() if file.name is not ".gitkeep"
+        file.name for file in CONTROLS_DIR.iterdir() if file.name != ".gitkeep"
     )
 
     all_instances: List[TrainingInstance] = []

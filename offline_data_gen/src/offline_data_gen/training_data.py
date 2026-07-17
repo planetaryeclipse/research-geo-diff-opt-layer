@@ -5,10 +5,10 @@ from dataclasses import dataclass, asdict
 from typing import List, Tuple
 
 from dacite import from_dict
-
-import offline_training.data_gen.datagen.episode_gen as episode_gen
-import offline_training.data_gen.datagen.ko_zones as ko_zones
-import offline_training.data_gen.datagen.fb_linear_controller as fb_linear_controller
+from offline_data_gen.episode_gen import DynUnicycleEpisode
+from offline_data_gen.fb_linear_controller import SimulationResult
+from offline_data_gen.ko_zones import KeepOutZone
+from offline_data_gen.util import Serializable
 
 
 @dataclass
@@ -36,24 +36,16 @@ class ControllerState:
 
 
 @dataclass
-class TrainingInstance:
+class TrainingInstance(Serializable):
     traj: Trajectory
     zones: KeepOutZones
     state: ControllerState
 
-    def save(self, path: Path):
-        np.savez(path, **asdict(self))
-
-    @classmethod
-    def load(cls, path: Path) -> TrainingInstance:
-        data = np.load(path)
-        return from_dict(data_class=cls, data=data)
-
 
 def generate_instance(
-    episode: episode_gen.DynUnicycleEpisode,
-    zone: ko_zones.KeepOutZone,
-    sim: fb_linear_controller.SimulationResult,
+    episode: DynUnicycleEpisode,
+    zone: KeepOutZone,
+    sim: SimulationResult,
     max_above_ko_edge: float,
     min_above_ko_edge: float,
 ) -> TrainingInstance:
@@ -98,9 +90,9 @@ def generate_instance(
 
 
 def generate_instances(
-    episode: episode_gen.DynUnicycleEpisode,
-    zones: List[ko_zones.KeepOutZone],
-    sim: fb_linear_controller.SimulationResult,
+    episode: DynUnicycleEpisode,
+    zones: List[KeepOutZone],
+    sim: SimulationResult,
     max_above_ko_edge: float,
     min_above_ko_edge: float,
 ) -> List[TrainingInstance]:
@@ -110,26 +102,41 @@ def generate_instances(
     ]
 
 
+def _concat_nonzero_arrs(arrs: list[np.ndarray]) -> np.ndarray:
+    nonzero_arrs = [arr for arr in arrs if arr.shape[0] > 0]
+    return np.concatenate(nonzero_arrs)
+
+
 def aggregate_instances(instances: List[TrainingInstance]) -> TrainingInstance:
     return TrainingInstance(
         Trajectory(
-            pos=np.stack([instance.traj.pos for instance in instances]),
-            vel=np.stack([instance.traj.vel for instance in instances]),
-            accel=np.stack([instance.traj.accel for instance in instances]),
+            pos=_concat_nonzero_arrs([instance.traj.pos for instance in instances]),
+            vel=_concat_nonzero_arrs([instance.traj.vel for instance in instances]),
+            accel=_concat_nonzero_arrs([instance.traj.accel for instance in instances]),
         ),
         KeepOutZones(
-            pos=np.stack([instance.zones.pos for instance in instances]),
-            vel=np.stack([instance.zones.vel for instance in instances]),
-            accel=np.stack([instance.zones.accel for instance in instances]),
-            radius=np.stack([instance.zones.radius for instance in instances]),
-            radius_vel=np.stack([instance.zones.radius_vel for instance in instances]),
-            radius_accel=np.stack(
+            pos=_concat_nonzero_arrs([instance.zones.pos for instance in instances]),
+            vel=_concat_nonzero_arrs([instance.zones.vel for instance in instances]),
+            accel=_concat_nonzero_arrs(
+                [instance.zones.accel for instance in instances]
+            ),
+            radius=_concat_nonzero_arrs(
+                [instance.zones.radius for instance in instances]
+            ),
+            radius_vel=_concat_nonzero_arrs(
+                [instance.zones.radius_vel for instance in instances]
+            ),
+            radius_accel=_concat_nonzero_arrs(
                 [instance.zones.radius_accel for instance in instances]
             ),
         ),
         ControllerState(
-            state=np.stack([instance.state.state for instance in instances]),
-            controls=np.stack([instance.state.controls for instance in instances]),
+            state=_concat_nonzero_arrs(
+                [instance.state.state for instance in instances]
+            ),
+            controls=_concat_nonzero_arrs(
+                [instance.state.controls for instance in instances]
+            ),
         ),
     )
 

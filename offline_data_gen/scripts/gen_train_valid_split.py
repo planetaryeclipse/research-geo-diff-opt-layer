@@ -19,9 +19,7 @@ def main():
     r = np.random.default_rng(44)
 
     instance_file_names = sorted(
-        file.name
-        for file in INDIV_INSTANCE_DIR.iterdir()
-        if file.name is not ".gitkeep"
+        file.name for file in INDIV_INSTANCE_DIR.iterdir() if file.name != ".gitkeep"
     )
 
     # aggegate all loaded instances and randomize

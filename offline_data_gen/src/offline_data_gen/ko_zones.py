@@ -3,7 +3,7 @@ import numpy as np
 from dataclasses import dataclass
 from typing import List
 
-from offline_training.data_gen.datagen.episode_gen import DynUnicycleEpisode
+from offline_data_gen.episode_gen import DynUnicycleEpisode
 
 
 @dataclass
@@ -36,45 +36,39 @@ def generate_keep_out_zones(
     zone_vels = r.multivariate_normal(np.zeros(2), pos_vel_covar, num_zones)
     zone_accels = r.multivariate_normal(np.zeros(2), pos_accel_covar, num_zones)
 
-    zone_radii = r.normal(radius_mean, radius_std, num_zones)
+    zone_radii = np.clip(r.normal(radius_mean, radius_std, num_zones), 0.0, np.inf)
     zone_radii_vels = r.normal(0.0, radius_vel_std, num_zones)
     zone_radii_accels = r.normal(0.0, radius_accel_std, num_zones)
 
     # samples randomly from bins generated along the trajectory
 
-    intervals = np.linspace(0.0, 1.0, num_zones + 1)
-    subinterval_samples = r.uniform(0.0, 1.0, num_zones)
-
     zones = []
 
+    subinterval_samples = r.random(num_zones)
     num_idxs_in_episode = len(episode.trajectory.t)
+    for interval_lb, interval_ub in zip(range(num_zones), range(1, num_zones + 1)):
+        # boundary indices of the interval in the episode
+        min_interval_idx = interval_lb / (num_zones + 1) * num_idxs_in_episode
+        max_interval_idx = interval_ub / (num_zones + 1) * num_idxs_in_episode
 
-    for min_interval_frac, max_interval_frac in zip(
-        range(num_zones), range(1, num_zones + 1)
-    ):
-        min_interval_idx, max_interval_idx = (
-            intervals[min_interval_frac] * num_idxs_in_episode,
-            intervals[max_interval_frac] * num_idxs_in_episode,
-        )
+        # creates an index inside the interval
         interval_sample_idx = int(
             min_interval_idx
-            + subinterval_samples[min_interval_frac]
-            * (max_interval_idx - min_interval_idx)
+            + subinterval_samples[interval_lb] * (max_interval_idx - min_interval_idx)
         )
 
-        zone_pos = (
-            episode.trajectory.x[interval_sample_idx, :]
-            + zone_pos_offsets[:, interval_sample_idx]
+        zone_pos = episode.trajectory.x[interval_sample_idx, :] + (
+            zone_pos_offsets[interval_lb, :]
         )
 
         zones.append(
             KeepOutZone(
                 center=zone_pos,
-                center_vel=zone_vels[:, interval_sample_idx],
-                center_accel=zone_accels[:, interval_sample_idx],
-                radius=zone_radii[interval_sample_idx],
-                radius_vel=zone_radii_vels[interval_sample_idx],
-                radius_accel=zone_radii_accels[interval_sample_idx],
+                center_vel=zone_vels[interval_lb, :],
+                center_accel=zone_accels[interval_lb, :],
+                radius=zone_radii[interval_lb],
+                radius_vel=zone_radii_vels[interval_lb],
+                radius_accel=zone_radii_accels[interval_lb],
             )
         )
 
