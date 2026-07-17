@@ -1,11 +1,15 @@
+import cattrs
 from dacite import from_dict
 import numpy as np
 
 from pathlib import Path
 from typing import List, Tuple
 
+from offline_data_gen.util import Serializable
 from scipy.interpolate import CubicSpline
 from dataclasses import dataclass, asdict
+
+import torch
 
 
 def generate_waypoints(
@@ -57,8 +61,9 @@ def generate_position_splines(
 ) -> List[CubicSpline]:
     n = len(waypoints[0][0])
 
-    waypoint_t = np.array(time for _, time in waypoints)
-    waypoint_coords = [np.array(pos[i] for pos, _ in waypoints) for i in range(n)]
+    waypoint_t = np.array([time for _, time in waypoints])
+    waypoint_coords = [np.array([pos[i] for pos, _ in waypoints]) for i in range(n)]
+
     waypoint_splines = [
         CubicSpline(waypoint_t, waypoint_coord) for waypoint_coord in waypoint_coords
     ]
@@ -95,6 +100,7 @@ def generate_dyn_unicycle_trajectory(
         velocity_bias,
         r,
     )
+
     waypoint_splines = generate_position_splines(waypoints)
 
     sample_times = np.arange(0.0, total_time + sample_time, sample_time)
@@ -116,17 +122,9 @@ def generate_dyn_unicycle_trajectory(
 
 
 @dataclass
-class DynUnicycleEpisode:
+class DynUnicycleEpisode(Serializable):
     trajectory: DynUnicycleTrajectory
     start: np.ndarray
-
-    def save(self, path: Path):
-        np.savez(path, **asdict(self))
-
-    @classmethod
-    def load(cls, path: Path) -> DynUnicycleEpisode:
-        data = np.load(path)
-        return from_dict(data_class=cls, data=data)
 
 
 def wrap_ang(ang: float) -> float:

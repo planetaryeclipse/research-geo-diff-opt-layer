@@ -1,6 +1,6 @@
 import rootutils
 
-_PROJ_ROOT = rootutils.setup_root(search_from=__file__)
+_PROJ_ROOT = rootutils.setup_root(search_from=__file__, indicator=".project-root")
 
 EPISODES_DIR = _PROJ_ROOT / "offline_data_gen/data/episodes"
 EPISODE_FILE_PREFIX = "episode_{id:003d}.npz"

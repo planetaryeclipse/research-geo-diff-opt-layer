@@ -13,8 +13,8 @@ from offline_data_gen.util import clean_dirs
 START_WAYPOINT = np.zeros((2))
 VELOCITY_BIAS = 1.5
 SAMPLE_TIME = 0.01
-MIN_NEXT_DIST = 3.0
-MAX_NEXT_DIST = 5.0
+MIN_NEXT_DIST = 1.0
+MAX_NEXT_DIST = 2.0
 MIN_DURATION = 3.0
 MAX_DURATION = 5.0
 TOTAL_TIME = 20.0
@@ -22,8 +22,8 @@ TOTAL_TIME = 20.0
 # episode generation parameters
 NUM_TRAJECTORIES = 20
 NUM_EPS_PER_TRAJECTORY = 5
-START_POS_VAR = 0.25
-START_ANG_VAR = np.pi / 6
+START_POS_VAR = 1.0
+START_ANG_VAR = np.pi
 
 
 def main():
