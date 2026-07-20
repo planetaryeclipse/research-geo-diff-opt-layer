@@ -376,7 +376,7 @@ def run_all_tests(run_dir: Path):
 
 
 if __name__ == "__main__":
-    root_dir = rootutils.setup_root(search_from=__file__)
+    root_dir = rootutils.setup_root(search_from=__file__, indicator=".project-root")
     results_dir = root_dir / "approx_optim/results"
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")

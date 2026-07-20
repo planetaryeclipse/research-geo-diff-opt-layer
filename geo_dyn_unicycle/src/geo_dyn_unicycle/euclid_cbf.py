@@ -2,18 +2,31 @@ import torch
 
 
 def batched_cbf_ko_coeffs(
-    p: torch.Tensor,  # batched coordinates
-    ko: torch.Tensor,  # keep-out regions
-    k_1: torch.Tensor,  # constant positive parameter for cbf
-    k_2: torch.Tensor,  # constant positive parameter for cbf
+    state: torch.Tensor,
+    ko_pos: torch.Tensor,
+    ko_vel: torch.Tensor,
+    ko_acc: torch.Tensor,
+    ko_rad: torch.Tensor,
+    ko_rad_vel: torch.Tensor,
+    ko_rad_acc: torch.Tensor,
+    k_1: float,  # constant positive parameter for cbf
+    k_2: float,  # constant positive parameter for cbf
 ):
+    num_batches = state.shape[0]
+
     # note that this formulation splits the cbf formulation into a leading
     # coefficient for the single input u_f (u_t does not appear in the CBF) and
     # a linear term that then forms a linear constraint in implementation
 
     # splits the state and keep-out regions for convenience in the following
     # operations but we have to take the column vector given the batched forms
-    (x, y, theta, v, omega) = (p[:, 0], p[:, 1], p[:, 2], p[:, 3], p[:, 4])
+    x, y, theta, v, omega = (
+        state[:, 0],
+        state[:, 1],
+        state[:, 2],
+        state[:, 3],
+        state[:, 4],
+    )
     (
         ko_x,
         ko_y,
@@ -25,15 +38,15 @@ def batched_cbf_ko_coeffs(
         ko_vel_radius,
         ko_accel_radius,
     ) = (
-        ko[:, 0],
-        ko[:, 1],
-        ko[:, 2],
-        ko[:, 3],
-        ko[:, 4],
-        ko[:, 5],
-        ko[:, 6],
-        ko[:, 7],
-        ko[:, 8],
+        ko_pos[:, 0],
+        ko_pos[:, 1],
+        ko_vel[:, 0],
+        ko_vel[:, 1],
+        ko_acc[:, 0],
+        ko_acc[:, 1],
+        ko_rad,
+        ko_rad_vel,
+        ko_rad_acc,
     )
 
     x_err = ko_x - x
@@ -47,11 +60,11 @@ def batched_cbf_ko_coeffs(
     r_5 = r_sqr_err ** (5.0 / 2) * x_err * y_err
 
     # the coefficient of u_f
-    a_coeffs = torch.zeros((p.shape[0], 1, 2))
-    a_coeffs[:, 0, 0] = -(+2 * r_1 * torch.cos(theta) + 2 * r_2 * torch.sin(theta)) / (
+    a_coeffs = torch.zeros((num_batches, 1, 2))
+    a_coeffs[:, 0, 0] = (+2 * r_1 * torch.cos(theta) + 2 * r_2 * torch.sin(theta)) / (
         2 * r_sqr_err**4
     )
-    b_term = -(
+    b_term = (
         -2 * k_1 * k_2 * r_sqr_err ** (9 / 2)
         + 2 * k_1 * k_2 * r_sqr_err**4 * ko_radius
         + 2 * k_2 * r_sqr_err**4 * ko_vel_radius

@@ -9,6 +9,58 @@ from dmol.diff_mfld.riemann import MetricField
 import torch
 
 
+def batched_gcbf_cost[U: Manifold](
+    u_nom: torch.Tensor,
+    metric: MetricField[U],
+    log_map_method: LogMapMethod,
+    log_map_covar_method: LogMapCovarMethod,
+) -> list[ScalarField[U]]:
+    batch_size = u_nom.shape[0]
+    costs = []
+    for sample_idx in range(batch_size):
+        costs.append(
+            gcbf_cost(
+                Point[metric.bundle.base](u_nom[sample_idx, :]),
+                metric,
+                log_map_method,
+                log_map_covar_method,
+            )
+        )
+    return costs
+
+
+def batched_gcbf_constr[U: Manifold](
+    input_space: type[U],  # input space type
+    uni_state: torch.Tensor,
+    ko_pos: torch.Tensor,
+    ko_vel: torch.Tensor,
+    ko_acc: torch.Tensor,
+    ko_rad: torch.Tensor,
+    ko_rad_vel: torch.Tensor,
+    ko_rad_acc: torch.Tensor,
+    k1: float,
+    k2: float,
+) -> list[ScalarField[U]]:
+    batch_size = uni_state.shape[0]
+    constrs = []
+    for sample_idx in range(batch_size):
+        constrs.append(
+            gcbf_constr(
+                input_space,
+                uni_state[sample_idx, :],
+                ko_pos[sample_idx, :],
+                ko_vel[sample_idx, :],
+                ko_acc[sample_idx, :],
+                ko_rad[sample_idx].item(),
+                ko_rad_vel[sample_idx].item(),
+                ko_rad_acc[sample_idx].item(),
+                k1,
+                k2,
+            )
+        )
+    return constrs
+
+
 def gcbf_cost[U: Manifold](
     u_nom: Point[U],
     metric: MetricField[U],
@@ -21,7 +73,12 @@ def gcbf_cost[U: Manifold](
 def gcbf_constr[U: Manifold](
     input_space: type[U],  # input space type
     uni_state: torch.Tensor,
-    keep_out: torch.Tensor,
+    ko_pos: torch.Tensor,
+    ko_vel: torch.Tensor,
+    ko_acc: torch.Tensor,
+    ko_rad: float,
+    ko_rad_vel: float,
+    ko_rad_acc: float,
     k1: float,
     k2: float,
 ) -> ScalarField[U]:
@@ -47,15 +104,15 @@ def gcbf_constr[U: Manifold](
         ko_vel_radius,
         ko_accel_radius,
     ) = (
-        keep_out[0],
-        keep_out[1],
-        keep_out[2],
-        keep_out[3],
-        keep_out[4],
-        keep_out[5],
-        keep_out[6],
-        keep_out[7],
-        keep_out[8],
+        ko_pos[0],
+        ko_pos[1],
+        ko_vel[0],
+        ko_vel[1],
+        ko_acc[0],
+        ko_acc[1],
+        ko_rad,
+        ko_rad_vel,
+        ko_rad_acc,
     )
 
     x_err = ko_x - x
@@ -69,10 +126,10 @@ def gcbf_constr[U: Manifold](
     r_5 = r_sqr_err ** (5.0 / 2) * x_err * y_err
 
     # find a leading coefficient for the forward input and a constant
-    a_coeff = -(+2 * r_1 * torch.cos(theta) + 2 * r_2 * torch.sin(theta)) / (
+    a_coeff = (+2 * r_1 * torch.cos(theta) + 2 * r_2 * torch.sin(theta)) / (
         2 * r_sqr_err**4
     )
-    b_term = -(
+    b_term = (
         -2 * k1 * k2 * r_sqr_err ** (9 / 2)
         + 2 * k1 * k2 * r_sqr_err**4 * ko_radius
         + 2 * k2 * r_sqr_err**4 * ko_vel_radius

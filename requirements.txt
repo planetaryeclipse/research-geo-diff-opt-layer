@@ -9,19 +9,16 @@ cvxpylayers
 tqdm
 pathos
 dacite
-
 cattrs
 rootutils
-hydra-core
-
 black
-
 pip
 notebook
 ipykernel
-
 seaborn
+pytest
 
 -e external/dmol
 -e geo_dyn_unicycle
 -e offline_data_gen
+-e offline_training
