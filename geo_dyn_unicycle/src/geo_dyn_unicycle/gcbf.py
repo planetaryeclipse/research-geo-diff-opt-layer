@@ -67,7 +67,9 @@ def gcbf_cost[U: Manifold](
     log_map_method: LogMapMethod,
     log_map_covar_method: LogMapCovarMethod,
 ) -> ScalarField[U]:
-    return 0.5 * RiemSqrDist[U](u_nom, metric, log_map_method, log_map_covar_method)
+    return 0.5 * RiemSqrDist[u_nom.manifold](
+        u_nom, metric, log_map_method, log_map_covar_method
+    )
 
 
 def gcbf_constr[U: Manifold](

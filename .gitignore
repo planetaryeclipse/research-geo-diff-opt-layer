@@ -17,6 +17,7 @@ ros/log/
 
 # offline training
 offline_training/results/cvxpy/
+offline_training/results/dmol/
 
 # experiment folders
 approx_optim/results/*

@@ -9,7 +9,7 @@ from dmol.diff_mfld.connection.methods.methods import (
 from dmol.diff_mfld.mfld import Manifold
 from dmol.diff_mfld.riemann import MetricField, MetricLambdaField
 from dmol.optim.constr.ralm import ralm
-from dmol.optim.unconstr import rtr
+from dmol.optim.unconstr.rtr import rtr
 from dmol.torch.dmol import DiffMfldOptimProblem
 from geo_dyn_unicycle.gcbf import batched_gcbf_constr, batched_gcbf_cost, gcbf_cost
 from offline_training.metrics import MetricOption
@@ -34,27 +34,27 @@ from geo_dyn_unicycle.controller import Controller
 from offline_data_gen.dataloader import DynUnicycleDataset
 from offline_data_gen.paths import TRAIN_INSTANCE_PATH, VALID_INSTANCE_PATH
 from offline_data_gen.training_data import TrainingInstance
-from offline_training.paths import CVXPY_RESULTS
+from offline_training.paths import DMOL_RESULTS
 from offline_training.results_setup import get_run_dir
 
-CBF_K1 = 1.0
+CBF_K1 = 1.5
 CBF_K2 = 1.0
 
 NUM_HIDDEN_1 = 60
 NUM_HIDDEN_2 = 60
 
 NUM_EPOCHS = 100
-BATCH_SIZE = 128
-LR = 1e-5
+BATCH_SIZE = 32
+LR = 1e-3
 
 METRIC = MetricOption.EULER
 RETR_METHOD = ExpMapMethod.APPROX_O2
 LOG_MAP_METHOD = LogMapMethod.APPROX_O2
-LOG_MAP_COVAR_METHOD = LogMapCovarMethod.APPROX_O4
+LOG_MAP_COVAR_METHOD = LogMapCovarMethod.APPROX_O2
 DIST_METHOD = DistanceMethod.APPROX_O2
 GEOD_PARL_TRANSP_METHOD = GeodParlTranspMethod.APPROX_O2
 
-OPTIM_TOL = 1e-3
+OPTIM_TOL = 1e-2
 OPTIM_MAX_ITERS = 500
 
 OPTIM_PENALTY_START = 0.1
@@ -66,7 +66,7 @@ OPTIM_EQ_MULT_START = 0.0
 OPTIM_EQ_MULTS_MIN = -torch.inf
 OPTIM_EQ_MULTS_MAX = torch.inf
 OPTIM_SUBSOLVER_TOL_START = 1e-1
-OPTIM_SUBSOLVER_TOL_MIN = 1e-3
+OPTIM_SUBSOLVER_TOL_MIN = 1e-2
 OPTIM_SUBSOLVER_TOL_DECAY = 0.9
 OPTIM_SUBSOLVER_MAX_ITERS = 200
 OPTIM_RATIO = 0.8
@@ -88,12 +88,18 @@ def batch_loop_dmol[U: Manifold](
     metric: MetricField[U],
     perform_train: bool,
 ) -> tuple[float, float]:
+    if perform_train:
+        model.train()
+    else:
+        model.eval()
+
     num_batches = len(dataloader)
 
     running_unsafe_loss = 0.0
     running_safe_loss = 0.0
 
-    for batch_data in dataloader:
+    pbar = tqdm.tqdm(dataloader, desc="Batches", leave=False)
+    for batch_data in pbar:
         u_unsafe = model(
             batch_data["state"]["state"],
             batch_data["traj"]["pos"],
@@ -127,9 +133,9 @@ def batch_loop_dmol[U: Manifold](
         for sample_idx in range(u_safe.shape[0]):
             cost, constr = batched_costs[sample_idx], batched_constrs[sample_idx]
             u_safe[sample_idx, :] = DiffMfldOptimProblem.apply(
-                u_safe[sample_idx, :],
+                u_unsafe[sample_idx, :],
                 cost,
-                (constr),
+                (constr,),
                 (),
                 metric,
                 ralm,  # solver method
@@ -233,9 +239,9 @@ def main():
 
     run_dir: Path
     if is_new_run_dir:
-        run_dir = get_run_dir(CVXPY_RESULTS)
+        run_dir = get_run_dir(DMOL_RESULTS)
     else:
-        run_dir = CVXPY_RESULTS / args.resume
+        run_dir = DMOL_RESULTS / args.resume
         if not run_dir.exists():
             raise ValueError(f"run {run_dir} does not exist")
 
@@ -282,7 +288,13 @@ def main():
     # loads the training/validation data
     train_data = DynUnicycleDataset(TrainingInstance.load(TRAIN_INSTANCE_PATH))
     valid_data = DynUnicycleDataset(TrainingInstance.load(VALID_INSTANCE_PATH))
-    train_loader, valid_loader = DataLoader(train_data), DataLoader(valid_data)
+    train_loader, valid_loader = DataLoader(
+        train_data,
+        batch_size=BATCH_SIZE,
+    ), DataLoader(
+        valid_data,
+        batch_size=BATCH_SIZE,
+    )
 
     # setup the training
     loss_fn = nn.MSELoss()
@@ -308,9 +320,9 @@ def main():
             loss_fn,
             optimizer,
             metric,
-            perform_train=True,
+            perform_train=False,
         )
-        with open(history_path, "w") as file:
+        with open(history_path, "a") as file:
             writer = csv.writer(file)
             writer.writerow(
                 [
@@ -339,6 +351,13 @@ def main():
 
         if epoch > 0 and epoch % CHKPT_INTERVAL == 0:
             shutil.copy2(latest_path, run_dir / f"chkpt_{epoch}.pt")
+
+        pbar.set_postfix(
+            train_unsafe=train_unsafe_loss,
+            train_safe=train_safe_loss,
+            valid_unsafe=valid_unsafe_loss,
+            valid_safe=valid_safe_loss,
+        )
 
 
 if __name__ == "__main__":

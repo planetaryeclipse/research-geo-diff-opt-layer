@@ -33,7 +33,6 @@ BATCH_SIZE = 32
 LR = 1e-3
 
 RNG_SEED = 42
-
 CHKPT_INTERVAL = 10
 
 
@@ -210,7 +209,7 @@ def main():
             loss_fn,
             optimizer,
             cbf_layer,
-            perform_train=True,
+            perform_train=False,
         )
         with open(history_path, "a") as file:
             writer = csv.writer(file)
