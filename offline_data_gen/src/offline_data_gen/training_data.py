@@ -65,28 +65,31 @@ def generate_instance(
             continue
 
         valid_idxs.append(i)
+    valid_len = len(valid_idxs)
 
     # builds up an instance containing the desired trajectory, keep-out zone information, and state/controls from the
     # simulation at each timestep for future use in training
 
-    return TrainingInstance(
+    instance = TrainingInstance(
         Trajectory(
             pos=episode.trajectory.x[valid_idxs, :],
             vel=episode.trajectory.dx[valid_idxs, :],
             accel=episode.trajectory.ddx[valid_idxs, :],
         ),
         KeepOutZones(
-            pos=np.repeat(zone.center[:, np.newaxis], sample_len, axis=1),
-            vel=np.repeat(zone.center_vel[:, np.newaxis], sample_len, axis=1),
-            accel=np.repeat(zone.center_accel[:, np.newaxis], sample_len, axis=1),
-            radius=zone.radius * np.ones(sample_len),
-            radius_vel=zone.radius_vel * np.ones(sample_len),
-            radius_accel=zone.radius_accel * np.ones(sample_len),
+            pos=np.repeat(zone.center[np.newaxis, :], valid_len, axis=0),
+            vel=np.repeat(zone.center_vel[np.newaxis, :], valid_len, axis=0),
+            accel=np.repeat(zone.center_accel[np.newaxis, :], valid_len, axis=0),
+            radius=zone.radius * np.ones(valid_len),
+            radius_vel=zone.radius_vel * np.ones(valid_len),
+            radius_accel=zone.radius_accel * np.ones(valid_len),
         ),
         ControllerState(
             state=sim.states[valid_idxs, :], controls=sim.controls[valid_idxs, :]
         ),
     )
+
+    return instance
 
 
 def generate_instances(
@@ -143,7 +146,8 @@ def aggregate_instances(instances: List[TrainingInstance]) -> TrainingInstance:
 
 def randomize_instance(instance: TrainingInstance, r: np.random.Generator):
     num_samples = instance.traj.pos.shape[0]
-    idxs = r.shuffle(np.arange(num_samples))
+    idxs = np.arange(num_samples)
+    r.shuffle(idxs)
 
     return TrainingInstance(
         Trajectory(
@@ -169,7 +173,6 @@ def randomize_instance(instance: TrainingInstance, r: np.random.Generator):
 def split_instances(
     instance: TrainingInstance, split_percent: float = 0.7
 ) -> Tuple[TrainingInstance, TrainingInstance]:
-
     num_samples = instance.traj.pos.shape[0]
     num_train_samples = int(num_samples * split_percent)
 
@@ -180,16 +183,16 @@ def split_instances(
             accel=instance.traj.accel[:num_train_samples, :],
         ),
         KeepOutZones(
-            pos=instance.zones.pos[:num_samples, :],
-            vel=instance.zones.vel[:num_samples, :],
-            accel=instance.zones.accel[:num_samples, :],
-            radius=instance.zones.radius[:num_samples],
-            radius_vel=instance.zones.radius_vel[:num_samples],
-            radius_accel=instance.zones.radius_accel[:num_samples],
+            pos=instance.zones.pos[:num_train_samples, :],
+            vel=instance.zones.vel[:num_train_samples, :],
+            accel=instance.zones.accel[:num_train_samples, :],
+            radius=instance.zones.radius[:num_train_samples],
+            radius_vel=instance.zones.radius_vel[:num_train_samples],
+            radius_accel=instance.zones.radius_accel[:num_train_samples],
         ),
         ControllerState(
-            state=instance.state.state[:num_samples, :],
-            controls=instance.state.controls[:num_samples, :],
+            state=instance.state.state[:num_train_samples, :],
+            controls=instance.state.controls[:num_train_samples, :],
         ),
     )
 
@@ -200,17 +203,16 @@ def split_instances(
             accel=instance.traj.accel[num_train_samples:, :],
         ),
         KeepOutZones(
-            pos=instance.zones.pos[num_samples:, :],
-            vel=instance.zones.vel[num_samples:, :],
-            accel=instance.zones.accel[num_samples:, :],
-            radius=instance.zones.radius[num_samples:],
-            radius_vel=instance.zones.radius_vel[num_samples:],
-            radius_accel=instance.zones.radius_accel[num_samples:],
+            pos=instance.zones.pos[num_train_samples:, :],
+            vel=instance.zones.vel[num_train_samples:, :],
+            accel=instance.zones.accel[num_train_samples:, :],
+            radius=instance.zones.radius[num_train_samples:],
+            radius_vel=instance.zones.radius_vel[num_train_samples:],
+            radius_accel=instance.zones.radius_accel[num_train_samples:],
         ),
         ControllerState(
-            state=instance.state.state[num_samples:, :],
-            controls=instance.state.controls[num_samples:, :],
+            state=instance.state.state[num_train_samples:, :],
+            controls=instance.state.controls[num_train_samples:, :],
         ),
     )
-
     return train_instance, valid_instance

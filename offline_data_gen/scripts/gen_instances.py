@@ -14,19 +14,19 @@ from offline_data_gen.paths import (
 from offline_data_gen.training_data import TrainingInstance, generate_instances
 from offline_data_gen.util import clean_dirs
 
-NUM_ZONES = 20
+NUM_ZONES = 5
 
 POS_OFFSET_COVAR = 0.25 * np.eye(2)
-POS_VEL_COVAR = 0.25 * np.eye(2)
+POS_VEL_COVAR = 0.1 * np.eye(2)
 POS_ACCEL_COVAR = 0.05 * np.eye(2)
 
 RADIUS_MEAN = 0.75
 RADIUS_STD = 0.2
-RADIUS_VEL_STD = 0.1
-RADIUS_ACCEL_STD = 0.05
+RADIUS_VEL_STD = 0.02  # 0.05
+RADIUS_ACCEL_STD = 0.01
 
 MAX_ABOVE_KO_ZONE = 2.0
-MIN_ABOVE_KO_ZONE = 0.0
+MIN_ABOVE_KO_ZONE = 0.25  # lowered from 0.25
 
 
 def main():

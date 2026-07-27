@@ -22,15 +22,15 @@ from offline_data_gen.training_data import TrainingInstance
 from offline_training.paths import CVXPY_RESULTS
 from offline_training.results_setup import get_run_dir
 
-CBF_K1 = 1.0
+CBF_K1 = 1.5
 CBF_K2 = 1.0
 
 NUM_HIDDEN_1 = 60
 NUM_HIDDEN_2 = 60
 
 NUM_EPOCHS = 100
-BATCH_SIZE = 128
-LR = 1e-5
+BATCH_SIZE = 32
+LR = 1e-3
 
 RNG_SEED = 42
 
@@ -45,12 +45,18 @@ def batch_loop_cvxpy(
     constr_layer: cvxpylayer.CvxpyLayer,
     perform_train: bool,
 ) -> tuple[float, float]:
+    if perform_train:
+        model.train()
+    else:
+        model.eval()
+
     num_batches = len(dataloader)
 
     running_unsafe_loss = 0.0
     running_safe_loss = 0.0
 
-    for batch_data in dataloader:
+    pbar = tqdm.tqdm(dataloader, desc="Batches", leave=False)
+    for batch_data in pbar:
         u_unsafe = model(
             batch_data["state"]["state"],
             batch_data["traj"]["pos"],
@@ -70,7 +76,7 @@ def batch_loop_cvxpy(
             CBF_K2,
         )
 
-        u_safe = constr_layer(batched_cbf_a, batched_cbf_b, u_unsafe)
+        (u_safe,) = constr_layer(batched_cbf_a, batched_cbf_b, u_unsafe)
 
         loss_unsafe = loss_fn(batch_data["state"]["controls"], u_unsafe)
         loss_safe = loss_fn(batch_data["state"]["controls"], u_safe)
@@ -159,7 +165,13 @@ def main():
     # loads the training/validation data
     train_data = DynUnicycleDataset(TrainingInstance.load(TRAIN_INSTANCE_PATH))
     valid_data = DynUnicycleDataset(TrainingInstance.load(VALID_INSTANCE_PATH))
-    train_loader, valid_loader = DataLoader(train_data), DataLoader(valid_data)
+    train_loader, valid_loader = DataLoader(
+        train_data,
+        batch_size=BATCH_SIZE,
+    ), DataLoader(
+        valid_data,
+        batch_size=BATCH_SIZE,
+    )
 
     # setup the cvxpy optimization problem
     u = cp.Variable(2)
@@ -200,7 +212,7 @@ def main():
             cbf_layer,
             perform_train=True,
         )
-        with open(history_path, "w") as file:
+        with open(history_path, "a") as file:
             writer = csv.writer(file)
             writer.writerow(
                 [
@@ -229,6 +241,13 @@ def main():
 
         if epoch > 0 and epoch % CHKPT_INTERVAL == 0:
             shutil.copy2(latest_path, run_dir / f"chkpt_{epoch}.pt")
+
+        pbar.set_postfix(
+            train_unsafe=train_unsafe_loss,
+            train_safe=train_safe_loss,
+            valid_unsafe=valid_unsafe_loss,
+            valid_safe=valid_safe_loss,
+        )
 
 
 if __name__ == "__main__":

@@ -15,5 +15,8 @@ ros/log/
 *.npy
 *.pth
 
+# offline training
+offline_training/results/cvxpy/
+
 # experiment folders
 approx_optim/results/*

@@ -29,6 +29,7 @@ def main():
     ]
     aggregated_data = aggregate_instances(all_instances)
     randomized_data = randomize_instance(aggregated_data, r)
+
     train_data, valid_data = split_instances(randomized_data, TRAIN_VALID_SPLIT)
 
     # saves to disk

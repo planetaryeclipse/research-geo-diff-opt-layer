@@ -31,5 +31,5 @@ class DynUnicycleDataset(Dataset):
             },
         }
 
-    def __getitems__(self, indices):
-        self.__getitem__(indices)  # other method is directly compatible
+    # def __getitems__(self, indices):
+    #     self.__getitem__(indices)  # other method is directly compatible

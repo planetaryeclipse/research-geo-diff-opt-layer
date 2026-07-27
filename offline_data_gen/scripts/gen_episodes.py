@@ -17,13 +17,13 @@ MIN_NEXT_DIST = 1.0
 MAX_NEXT_DIST = 2.0
 MIN_DURATION = 3.0
 MAX_DURATION = 5.0
-TOTAL_TIME = 20.0
+TOTAL_TIME = 5.0  # 5.0  # 10.0  # originally 20.0
 
 # episode generation parameters
-NUM_TRAJECTORIES = 20
-NUM_EPS_PER_TRAJECTORY = 5
+NUM_TRAJECTORIES = 10  # 5  # 10
+NUM_EPS_PER_TRAJECTORY = 2
 START_POS_VAR = 1.0
-START_ANG_VAR = np.pi
+START_ANG_VAR = np.pi / 4
 
 
 def main():

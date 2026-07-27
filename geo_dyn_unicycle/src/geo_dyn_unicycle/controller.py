@@ -1,6 +1,12 @@
 import torch
 import torch.nn as nn
 
+# ensure torch and numpy types can directly be exchanged
+import torch
+
+torch.set_default_dtype(torch.float64)
+torch.set_default_device("cpu")
+
 
 class Controller(nn.Module):
     def __init__(
@@ -34,14 +40,12 @@ class Controller(nn.Module):
         traj_vel: torch.Tensor,
         traj_acc: torch.Tensor,
     ):
-        pos_state = state[:2]
+        pos_state = state[:, :2]
         pos_err = traj_pos - pos_state  # prevents absolute position-based behavior
-        non_pos_state = state[2:]
+        non_pos_state = state[:, 2:]
 
-        is_batched = len(state.shape) > 1
-        input = torch.concatenate(
-            (pos_err, non_pos_state, traj_vel, traj_acc),
-            dim=0 if not is_batched else 1,
-        )
+        input = torch.concatenate((pos_err, non_pos_state, traj_vel, traj_acc), dim=1)
+
         out = self._cntrllr.forward(input)
+
         return out
